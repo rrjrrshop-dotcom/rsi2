@@ -1,0 +1,2 @@
+export const RECOMMENDATION_LIMIT = 6;
+export const RECOMMENDATION_SCREEN_VERSION = 1;
