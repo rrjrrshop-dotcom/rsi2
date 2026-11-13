@@ -20,6 +20,7 @@ jobs:
       VAPID_PUBLIC_KEY: ${{ secrets.VAPID_PUBLIC_KEY }}
       VAPID_PRIVATE_KEY: ${{ secrets.VAPID_PRIVATE_KEY }}
       VAPID_SUBJECT: ${{ secrets.VAPID_SUBJECT }}
+      SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
       DOW_CONSTITUENTS_URL: ${{ secrets.DOW_CONSTITUENTS_URL }}
       SP500_CONSTITUENTS_URL: ${{ secrets.SP500_CONSTITUENTS_URL }}
     steps:
