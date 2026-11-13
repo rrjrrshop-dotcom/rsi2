@@ -43,6 +43,30 @@ export function makeMarketData({key,fetcher=(url,options)=>fetch(url,{...options
    const data=await request(`/v2/aggs/grouped/locale/us/market/stocks/${date}`,{adjusted:String(adjusted)});
    return (data.results||[]).map(r=>({symbol:r.T,open:r.o,high:r.h,low:r.l,close:r.c,volume:r.v}));
   },
+  async stockDirectory(date) {
+   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new DataError('조회 날짜가 올바르지 않습니다.', 400);
+   const path = '/v3/reference/tickers';
+   const directory = [];
+   const seenPages = new Set();
+   let page = await request(path, {market: 'stocks', type: 'CS', active: true, date, limit: 1000, sort: 'ticker', order: 'asc'});
+   while (page) {
+    if (!Array.isArray(page.results)) throw new DataError('기업 식별자 목록을 확인할 수 없습니다.', 502);
+    for (const row of page.results) {
+     if (row.type === 'CS' && row.market === 'stocks' && row.locale === 'us' && row.active !== false &&
+         typeof row.ticker === 'string' && /^\d{1,10}$/.test(row.cik ?? '')) {
+      directory.push({ticker: row.ticker, cik_str: Number(row.cik)});
+     }
+    }
+    if (!page.next_url) break;
+    const next = new URL(page.next_url);
+    if (next.origin !== marketOrigin || next.pathname !== path || next.username || next.password || seenPages.has(next.search)) {
+     throw new DataError('기업 식별자 목록의 다음 페이지 주소가 올바르지 않습니다.', 502);
+    }
+    seenPages.add(next.search);
+    page = await request(path + next.search);
+   }
+   return directory;
+  },
   async splits(from, through) {
    const events = new Map();
    const seenPages = new Set();
