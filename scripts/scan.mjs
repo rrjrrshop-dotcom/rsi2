@@ -1,12 +1,10 @@
 import {attachSecurityMetadata} from '../server/scan-metadata.mjs';import {readFile,writeFile} from 'node:fs/promises';import {resultStore} from '../server/result-store.mjs';
 import {tradingDatesFromBars} from '../server/trading-calendar.mjs';import {priorEasternDay} from '../api/quote.mjs';
 import {makeMarketData} from '../server/market-data.mjs';import {intradayContext,compareFrames} from '../intraday1000.mjs';import {scanGrouped} from '../server/grouped-scan.mjs';import {snapshotStore,withSnapshotCache} from '../server/snapshot-store.mjs';import {rateLimit} from '../server/batch-scan.mjs';
-import {RECOMMENDATION_SCREEN_VERSION} from '../recommendation-policy.mjs';
 import {daysBefore, loadSecFundamentals, MAX_FUNDAMENTALS_AGE_DAYS} from '../server/sec-fundamentals.mjs';
 import {screenRecommendations} from '../server/recommendation-screen.mjs';
 
 async function prepareRecommendations(client, securities, through) {
- try {
   const fundamentals = await loadSecFundamentals(securities, through);
   const [closingBars, splits] = await Promise.all([
    client.dailyMarket(through, {adjusted: false}),
@@ -15,12 +13,9 @@ async function prepareRecommendations(client, securities, through) {
   if (!closingBars.length) throw Error('시가총액 기준일의 종가 데이터가 없습니다.');
   const closes = new Map(closingBars.map(row => [row.symbol, row.close]));
   const screen = screenRecommendations(securities, fundamentals, closes, splits, through);
+  if (screen.summary.status !== 'applied') throw Error('시가총액과 재무건전성을 확인할 자료가 부족합니다.');
   console.log('Recommendation screen:', JSON.stringify(screen.summary));
   return screen;
- } catch (error) {
-  console.warn(`Recommendation screen unavailable: ${error.message}`);
-  return {eligible: new Set(), summary: {version: RECOMMENDATION_SCREEN_VERSION, status: 'unavailable', through}};
- }
 }
 async function main(){
  const [universePath,datesPath,outputPath='scan-result.json']=process.argv.slice(2);
@@ -37,9 +32,9 @@ async function main(){
  const cachePath=`.rsi-cache/${dates.at(-1)}`;
  const getDaily=withSnapshotCache(snapshotStore(cachePath),fetchDaily);
  if (!Array.isArray(dates) || !dates.length) throw Error('확정 거래일이 없습니다.');
- const screening = prepareRecommendations(client,universe.securities,dates.at(-1));
- const result=await scanGrouped({symbols,dates,getDaily,recommendationSymbols:screening.then(screen=>screen.eligible),onProgress:p=>console.error(`${p.completed}/${p.total} ${p.date}`)});
- const screen=await screening;
+ // Verify financial data before spending the free-plan quota on historical prices.
+ const screen = await prepareRecommendations(client,universe.securities,dates.at(-1));
+ const result=await scanGrouped({symbols,dates,getDaily,recommendationSymbols:screen.eligible,onProgress:p=>console.error(`${p.completed}/${p.total} ${p.date}`)});
  result.preliminary.recommendationScreen=screen.summary;
  console.log('Recommendation counts:',JSON.stringify(Object.fromEntries(Object.entries(result.preliminary.recommendations).map(([tab,rows])=>[tab,rows.length]))));
  // Only the displayed 1000 candidates receive a 15-minute comparison;
