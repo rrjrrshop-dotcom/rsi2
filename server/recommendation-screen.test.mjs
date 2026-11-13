@@ -4,6 +4,7 @@ import {readCompanyFacts, matchSecIssuers, loadSecFundamentals} from './sec-fund
 import {screenRecommendations} from './recommendation-screen.mjs';
 import {scanGrouped} from './grouped-scan.mjs';
 import {compactScan} from './result-store.mjs';
+import {makeMarketData} from './market-data.mjs';
 
 const through = '2026-11-12';
 const fact = (val, overrides = {}) => ({val, end: '2026-09-30', filed: '2026-10-29', accn: 'report', form: '10-Q', ...overrides});
@@ -90,4 +91,34 @@ test('SEC requests require a declared app and operator contact before any networ
   for (const userAgent of ['', 'Stocking (https://example.com)', 'Stocking contact@example.com\r\nextra']) {
     await assert.rejects(loadSecFundamentals([], through, {userAgent, fetcher: async () => assert.fail('unexpected request')}), /SEC_USER_AGENT/);
   }
+});
+
+test('Massive issuer identifiers use all pages and the SEC loader accepts the verified directory', async () => {
+  const called = [];
+  const row = (ticker, cik) => ({ticker, cik, type: 'CS', market: 'stocks', locale: 'us', active: true});
+  const client = makeMarketData({key: 'test-key', fetcher: async url => {
+    called.push(url);
+    return {ok: true, json: async () => called.length === 1
+      ? {results: [row('AAA', '0000000001')], next_url: 'https://api.massive.com/v3/reference/tickers?cursor=second'}
+      : {results: [row('BBB', '0000000002')]}};
+  }});
+  const directory = await client.stockDirectory(through);
+  assert.equal(called[0].searchParams.get('date'), through);
+  assert.equal(called.length, 2);
+  assert.deepEqual(directory, [{ticker: 'AAA', cik_str: 1}, {ticker: 'BBB', cik_str: 2}]);
+  const results = await loadSecFundamentals([{symbol: 'AAA', kind: 'stock'}], through, {
+    userAgent: 'Stocking tests support@example.com', directory,
+    fetcher: async url => {
+      assert.equal(url, 'https://data.sec.gov/api/xbrl/companyfacts/CIK0000000001.json');
+      return {ok: true, json: async () => company()};
+    },
+  });
+  assert.equal(results.get('AAA').balance.equity, 400);
+  let requests = 0;
+  const unsafe = makeMarketData({key: 'test-key', fetcher: async () => {
+    requests++;
+    return {ok: true, json: async () => ({results: [], next_url: 'https://example.com/v3/reference/tickers?cursor=second'})};
+  }});
+  await assert.rejects(unsafe.stockDirectory(through), /다음 페이지/);
+  assert.equal(requests, 1);
 });
