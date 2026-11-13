@@ -78,8 +78,16 @@ test('production scan ranks only eligible stocks and persists six recommendation
 });
 
 test('SEC access failure stops recommendation screening instead of using a partially loaded market', async () => {
-  await assert.rejects(loadSecFundamentals([{symbol: 'AAA', kind: 'stock'}], through, {fetcher: async url => {
+  const userAgent = 'Stocking tests support@example.com';
+  await assert.rejects(loadSecFundamentals([{symbol: 'AAA', kind: 'stock'}], through, {userAgent, fetcher: async (url, options) => {
+    assert.equal(options.headers['User-Agent'], userAgent);
     if (url.includes('company_tickers')) return {ok: true, json: async () => ({0: {ticker: 'AAA', cik_str: 1}})};
     return {ok: false, status: 403};
   }}), /403/);
+});
+
+test('SEC requests require a declared app and operator contact before any network access', async () => {
+  for (const userAgent of ['', 'Stocking (https://example.com)', 'Stocking contact@example.com\r\nextra']) {
+    await assert.rejects(loadSecFundamentals([], through, {userAgent, fetcher: async () => assert.fail('unexpected request')}), /SEC_USER_AGENT/);
+  }
 });
