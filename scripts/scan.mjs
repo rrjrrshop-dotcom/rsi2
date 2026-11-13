@@ -5,7 +5,9 @@ import {daysBefore, loadSecFundamentals, MAX_FUNDAMENTALS_AGE_DAYS} from '../ser
 import {screenRecommendations} from '../server/recommendation-screen.mjs';
 
 async function prepareRecommendations(client, securities, through) {
-  const fundamentals = await loadSecFundamentals(securities, through);
+  const directory = await client.stockDirectory(through);
+  console.log(`Company identifiers loaded: ${directory.length}`);
+  const fundamentals = await loadSecFundamentals(securities, through, {directory});
   const [closingBars, splits] = await Promise.all([
    client.dailyMarket(through, {adjusted: false}),
    client.splits(daysBefore(through, MAX_FUNDAMENTALS_AGE_DAYS), through),
