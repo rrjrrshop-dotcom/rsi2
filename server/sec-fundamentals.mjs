@@ -82,7 +82,7 @@ export function matchSecIssuers(securities, directory) {
   return matched;
 }
 
-export async function loadSecFundamentals(securities, through, {fetcher = fetch, userAgent = process.env.SEC_USER_AGENT} = {}) {
+export async function loadSecFundamentals(securities, through, {fetcher = fetch, userAgent = process.env.SEC_USER_AGENT, directory} = {}) {
   if (typeof userAgent !== 'string' || !/^[^\r\n]+\s+[^\s@]+@[^\s@]+\.[^\s@]+$/.test(userAgent.trim())) {
     throw Error('SEC_USER_AGENT에 앱 이름과 운영자 연락 이메일을 설정해야 합니다.');
   }
@@ -99,8 +99,8 @@ export async function loadSecFundamentals(securities, through, {fetcher = fetch,
     return response.json();
   }
 
-  const directory = await request('https://www.sec.gov/files/company_tickers.json');
-  const issuers = [...matchSecIssuers(securities, directory)];
+  const tickerDirectory = directory ?? await request('https://www.sec.gov/files/company_tickers.json');
+  const issuers = [...matchSecIssuers(securities, tickerDirectory)];
   if (!issuers.length) throw Error('자동 검색 대상의 SEC 공시 식별자를 확인할 수 없습니다.');
 
   const results = new Map();
