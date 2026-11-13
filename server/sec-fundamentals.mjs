@@ -3,10 +3,6 @@ import {rateLimit} from './batch-scan.mjs';
 export const MAX_FUNDAMENTALS_AGE_DAYS = 180;
 const filings = new Set(['10-K', '10-Q', '20-F', '40-F', '6-K']);
 const datePattern = /^\d{4}-\d{2}-\d{2}$/;
-const secHeaders = {
-  Accept: 'application/json',
-  'User-Agent': 'Stocking/1.0 (https://github.com/rrjrrshop-dotcom/rsi2/issues)',
-};
 
 export function daysBefore(date, days) {
   const day = new Date(`${date}T00:00:00Z`);
@@ -86,12 +82,17 @@ export function matchSecIssuers(securities, directory) {
   return matched;
 }
 
-export async function loadSecFundamentals(securities, through, {fetcher = fetch} = {}) {
+export async function loadSecFundamentals(securities, through, {fetcher = fetch, userAgent = process.env.SEC_USER_AGENT} = {}) {
+  if (typeof userAgent !== 'string' || !/^[^\r\n]+\s+[^\s@]+@[^\s@]+\.[^\s@]+$/.test(userAgent.trim())) {
+    throw Error('SEC_USER_AGENT에 앱 이름과 운영자 연락 이메일을 설정해야 합니다.');
+  }
+  const headers = {Accept: 'application/json', 'User-Agent': userAgent.trim()};
   const limitedFetch = rateLimit(fetcher, {intervalMs: 300});
   async function request(url) {
-    const response = await limitedFetch(url, {headers: secHeaders, signal: AbortSignal.timeout(15000), redirect: 'error'});
+    const response = await limitedFetch(url, {headers, signal: AbortSignal.timeout(15000), redirect: 'error'});
     if (!response.ok) {
-      const error = new Error(`SEC 데이터 응답 오류 (${response.status})`);
+      const source = url.includes('company_tickers') ? '종목 목록' : '기업 재무자료';
+      const error = new Error(`SEC ${source} 응답 오류 (${response.status})`);
       error.status = response.status;
       throw error;
     }
