@@ -1,5 +1,0 @@
-import {samples,heldout,historical,historical2} from './nova-samples.mjs';import {experimentalNova} from '../nova-experimental.mjs';
-for(const [name,rows] of [['development',samples],['heldout',heldout],['historical',historical],['historical2',historical2]]){let sum=0,hit=0,near=0;console.log(name);for(const x of rows){const predicted=experimentalNova(x).score,delta=predicted-x.observed;sum+=Math.abs(delta);if(!delta)hit++;if(Math.abs(delta)<=1)near++;console.log(`${x.symbol}\t${x.observed}\t${predicted}\t${delta}`)}console.log(`n=${rows.length} exact=${hit} within1=${near} MAE=${(sum/rows.length).toFixed(2)}`)}
-// Same nine Boolean inputs with different labels prove these inputs alone cannot reproduce all observed scores.
-const groups=new Map();for(const x of [...samples,...heldout,...historical,...historical2]){const key=experimentalNova(x).checks.map(c=>Number(c.passed)).join('');const list=groups.get(key)||[];list.push(x);groups.set(key,list)}
-console.log('conflicting feature patterns');for(const [pattern,rows] of groups)if(new Set(rows.map(x=>x.observed)).size>1)console.log(`${pattern}: ${rows.map(x=>`${x.symbol}=${x.observed}`).join(', ')}`);

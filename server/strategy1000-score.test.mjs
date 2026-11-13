@@ -1,0 +1,2 @@
+import {test} from 'node:test';import assert from 'node:assert/strict';import {estimate1000Score} from '../strategy1000-score.mjs';
+test('experimental score calibrates nine conditions and preserves missing state',()=>{const r=estimate1000Score({close:10,ema8:9,ema13:8,ema21:7,ema55:6,macd:2,signal:1,k:70,d:60});assert.equal(r.rawScore,9);assert.equal(r.score,8);assert.equal(r.checks.length,9);assert.equal(estimate1000Score({}).score,null)});

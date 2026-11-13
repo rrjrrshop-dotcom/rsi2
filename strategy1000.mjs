@@ -1,4 +1,4 @@
-/** Daily 1000 strategy. Only observable rules are definitive; proprietary NOVA score is unknown. */
+/** Daily 1000 strategy using the observable trend rules. */
 export function analyze1000(input){
  if(!Array.isArray(input)||input.length<60)throw Error('일봉 데이터가 최소 60개 필요합니다.');
  const bars=input.map(b=>({...b})).sort((a,b)=>a.date.localeCompare(b.date));

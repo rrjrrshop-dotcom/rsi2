@@ -1,4 +1,4 @@
-import {samples,heldout,historical,historical2,newHoldout,laterHoldout,novemberUploads} from './nova-samples.mjs';
+import {samples,heldout,historical,historical2,newHoldout,laterHoldout,novemberUploads} from './strategy1000-samples.mjs';
 const all=[...samples,...heldout,...historical,...historical2];
 const clamp=x=>Math.max(0,Math.min(9,Math.round(x)));
 const flags=x=>({p8:+(x.close>x.ema8),p13:+(x.close>x.ema13),p21:+(x.close>x.ema21),p55:+(x.close>x.ema55),a:+(x.ema8>x.ema13),b:+(x.ema13>x.ema21),c:+(x.ema8>x.ema55),m:+(x.macd>x.signal),s:+(x.k>x.d)});

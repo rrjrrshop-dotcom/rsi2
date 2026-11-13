@@ -1,4 +1,4 @@
-/** A coarse, explicitly provisional EMA comparison, not the unknown NOVA score. */
+/** Provisional intraday EMA comparison for the daily 1000 strategy. */
 const clock=new Intl.DateTimeFormat('en-GB',{timeZone:'America/New_York',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'});
 function eastern(t){const p=Object.fromEntries(clock.formatToParts(new Date(t)).filter(x=>x.type!=='literal').map(x=>[x.type,x.value]));return {date:`${p.year}-${p.month}-${p.day}`,minute:Number(p.hour)*60+Number(p.minute)}}
 export function intradayContext(bars,through){
