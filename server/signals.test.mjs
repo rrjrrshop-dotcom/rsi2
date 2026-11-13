@@ -1,0 +1,10 @@
+import assert from 'node:assert/strict';import {analyze} from './signals.mjs';
+const make=(f,n=220)=>Array.from({length:n},(_,i)=>({date:new Date(Date.UTC(2025,0,1+i)).toISOString().slice(0,10),close:f(i)}));
+assert.equal(analyze(make(i=>100+i)).rsi,100);
+assert.equal(analyze(make(()=>100)).rsi,50);
+assert.equal(analyze(make(()=>100,199)).status,'insufficient');
+const fall=make(i=>i<215?100+i*.2:143-(i-214)*2);assert.equal(analyze(fall).status,'buy');
+const below=make(i=>300-i);assert.equal(analyze(below).status,'wait');
+assert.throws(()=>analyze([{date:'2025-01-01',close:-1}]));
+assert.throws(()=>analyze([{date:'2025-01-01',close:1},{date:'2025-01-01',close:2}]));
+console.log('signal tests passed');

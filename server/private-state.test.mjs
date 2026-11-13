@@ -1,0 +1,3 @@
+import {test} from 'node:test';import assert from 'node:assert/strict';import {privateState,validateHoldings} from './private-state.mjs';
+test('validates symbols and only transmits deduplicated tickers',()=>{assert.deepEqual(validateHoldings(['ugi','UGI','MSFT']),['UGI','MSFT']);assert.throws(()=>validateHoldings(['../x']));assert.throws(()=>validateHoldings('UGI'))});
+test('state rejects arbitrary keys',async()=>{const s=privateState({url:'https://x.upstash.io',token:'x',fetcher:async()=>({ok:true,json:async()=>({result:null})})});await assert.rejects(s.get('secret'),/unknown/);assert.equal(await s.get('rsi2:notification-state'),null)});

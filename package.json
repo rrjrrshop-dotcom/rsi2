@@ -1,0 +1,1 @@
+{"name":"rsi2-personal","private":true,"type":"module","scripts":{"test":"node --test server/*.test.mjs"},"engines":{"node":">=20"}}

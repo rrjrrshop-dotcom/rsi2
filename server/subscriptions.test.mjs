@@ -1,0 +1,5 @@
+import {test} from 'node:test';import assert from 'node:assert/strict';import {constantTimeEqual,subscriptionService,upstashSubscriptions} from './subscriptions.mjs';
+const sub={endpoint:'https://fcm.googleapis.com/fcm/send/example',keys:{p256dh:'a'.repeat(87),auth:'b'.repeat(22)}};
+test('pair code check requires exact nonempty values',()=>{assert.equal(constantTimeEqual('abc','abc'),true);assert.equal(constantTimeEqual('abc','abcd'),false);assert.equal(constantTimeEqual('',''),false)});
+test('register and remove using endpoint hash',async()=>{let data=new Map(),service=subscriptionService({set:(k,v)=>data.set(k,v),delete:k=>data.delete(k)});const result=await service.add(sub);assert.equal(result.id.length,64);assert.equal(data.size,1);await service.remove(sub);assert.equal(data.size,0)});
+test('restrict storage host',()=>{assert.throws(()=>upstashSubscriptions({url:'https://upstash.io.evil.test',token:'x'}));assert.throws(()=>upstashSubscriptions({url:'http://test.upstash.io',token:'x'}))});

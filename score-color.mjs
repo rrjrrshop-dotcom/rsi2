@@ -1,0 +1,12 @@
+import {scoreStrategy} from './scores.mjs';
+import {explainStrategy} from './advice.mjs';
+import {saveReport} from './export-pdf.mjs';
+const palette=['#ff0000','#ff3900','#ff8c00','#ffc000','#fff000','#c4e52a','#70cc3f','#00bd58','#009e8d'];
+const config={'1000':{form:'n1000Form',result:'n1000Summary'},trend:{form:'trendForm',result:'trendResult'},box:{form:'boxForm',result:'boxResult'},rsi2:{form:'symbolForm',result:'quickResult'},breakout:{form:'breakoutForm',result:'breakoutResult'}};
+export function scoreColor(score){return Number.isFinite(score)&&score>=0&&score<=100?palette[Math.min(8,Math.floor(score*9/101))]:'#87929b'}
+function target(id){const node=document.getElementById(config[id].result);return id==='rsi2'?node.closest('section'):node}
+function label(panel){let n=panel.querySelector('.score-color-label');if(!n){n=document.createElement('p');n.className='score-color-label note';panel.prepend(n)}return n}
+const records={};
+export function updateStrategyColor(id,bars,symbol){const panel=target(id);let advice='분석 데이터가 부족하여 조건을 확인할 수 없습니다.';try{advice=explainStrategy(id,bars,symbol)}catch{}let score=null;try{score=scoreStrategy(id,bars,symbol).score;panel.style.borderLeftColor=scoreColor(score);label(panel).textContent=`임시 점수 ${score}/100 · 색상은 점수 구간 표시`;}catch{panel.style.borderLeftColor=scoreColor(null);label(panel).textContent='점수 확인 불가 · 회색';}records[id]={symbol,date:bars.at(-1)?.date||'날짜미확인',score,color:scoreColor(score),advice};document.getElementById('advice-'+id).textContent=advice;document.getElementById('pdf-'+id).disabled=false;return score}
+window.updateStrategyColor=updateStrategyColor;
+for(const id of Object.keys(config)){const panel=target(id),chart=document.getElementById(({1000:'n1000Chart',trend:'trendChart',box:'boxChart',rsi2:'priceChart',breakout:'breakoutChart'})[id]),advice=document.createElement('p'),pdf=document.createElement('button');advice.id='advice-'+id;advice.className='strategy-advice note';advice.textContent='종목 조회 후 상황별 설명이 표시됩니다.';chart.insertAdjacentElement('afterend',advice);pdf.id='pdf-'+id;pdf.type='button';pdf.className='secondary';pdf.textContent='📄 PDF 저장';pdf.disabled=true;pdf.addEventListener('click',async()=>{try{await saveReport(id,records[id])}catch(e){alert(e.message)}});panel.prepend(pdf);panel.classList.add('score-color-panel');document.getElementById(config[id].form).addEventListener('submit',()=>{records[id]=null;pdf.disabled=true;advice.textContent='종목 조회 중…';panel.style.borderLeftColor=scoreColor(null);label(panel).textContent='점수 확인 중 · 회색'})}

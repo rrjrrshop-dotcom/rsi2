@@ -1,0 +1,5 @@
+import {test} from 'node:test';import assert from 'node:assert/strict';import {scanSymbols,rateLimit} from './batch-scan.mjs';
+const bars=Array.from({length:210},(_,i)=>({date:new Date(Date.UTC(2025,0,i+1)).toISOString().slice(0,10),close:100+i}));
+test('deduplicates and labels stale and failed data',async()=>{let r=await scanSymbols({symbols:['AAA','aaa','BBB','CCC'],expectedDate:bars.at(-1).date,concurrency:2,getBars:async s=>{if(s==='CCC')throw Error('unavailable');return s==='BBB'?bars.slice(0,-1):bars}});assert.equal(r.total,3);assert.equal(r.waiting.length,1);assert.equal(r.stale.length,1);assert.equal(r.errors.length,1)});
+test('not enough data on latest date is reported as insufficient',async()=>{const few=bars.slice(-2),r=await scanSymbols({symbols:['AAA'],expectedDate:few.at(-1).date,getBars:async()=>few});assert.equal(r.insufficient.length,1)});
+test('rate limiter spaces start times across calls',async()=>{let t=0,starts=[];const f=rateLimit(async()=>starts.push(t),{intervalMs:10,clock:()=>t,sleep:async d=>{t+=d}});await Promise.all([f(),f(),f()]);assert.deepEqual(starts,[0,10,20])});

@@ -1,0 +1,5 @@
+import {test} from 'node:test';import assert from 'node:assert/strict';import {scanGrouped} from './grouped-scan.mjs';
+const dates=Array.from({length:210},(_,i)=>new Date(Date.UTC(2025,0,1+i)).toISOString().slice(0,10));
+test('distinguishes current, stale and insufficient symbols',async()=>{const r=await scanGrouped({symbols:['AAA','BBB','CCC','aaa'],dates,getDaily:async d=>{let i=dates.indexOf(d);return [{symbol:'AAA',close:100+i},...(i<209?[{symbol:'BBB',close:100+i}]:[]),...(i>205?[{symbol:'CCC',close:20+i}]:[])]}});assert.equal(r.total,3);assert.equal(r.waiting.length,1);assert.equal(r.stale.length,1);assert.equal(r.insufficient.length,1)});
+test('rejects missing market sessions instead of silently skipping',async()=>{await assert.rejects(scanGrouped({symbols:['AAA'],dates:['2026-01-02'],getDaily:async()=>[]}),/Missing market data/)});
+test('rejects duplicated sessions',async()=>{await assert.rejects(scanGrouped({symbols:['AAA'],dates:['2026-01-02','2026-01-02'],getDaily:async()=>[]}),/increasing/)});

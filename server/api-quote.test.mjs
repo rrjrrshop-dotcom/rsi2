@@ -1,0 +1,5 @@
+import {test} from 'node:test';import assert from 'node:assert/strict';import handler,{priorEasternDay,dataAgeDays} from '../api/quote.mjs';
+test('Eastern day, including DST',()=>{assert.equal(priorEasternDay(new Date('2026-11-10T04:30:00Z')),'2026-11-08');assert.equal(priorEasternDay(new Date('2026-11-10T05:01:00Z')),'2026-11-09')});
+test('invalid symbol and method rejected',async()=>{process.env.PAIRING_SECRET='unit-test-secret';for(const [req,status] of [[{method:'POST',query:{}},405],[{method:'GET',query:{symbol:'../../foo'},headers:{authorization:'Bearer unit-test-secret'}},400],[{method:'GET',query:{symbol:'UGI'},headers:{}},401]]){let code;const res={setHeader(){},status(c){code=c;return this},json(){}};await handler(req,res);assert.equal(code,status)}});
+
+test('calendar age rejects future dates and reports delay',()=>{assert.equal(dataAgeDays('2026-11-06','2026-11-09'),3);assert.equal(dataAgeDays('2026-10-20','2026-11-09'),20);assert.throws(()=>dataAgeDays('2026-11-10','2026-11-09'))});

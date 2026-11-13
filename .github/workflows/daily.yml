@@ -1,0 +1,37 @@
+name: Daily market scan
+on:
+  workflow_dispatch:
+  schedule:
+    # 11:00 UTC Tuesday–Saturday = previous US session Monday–Friday.
+    - cron: '0 11 * * 2-6'
+permissions:
+  contents: read
+concurrency:
+  group: daily-market-scan
+  cancel-in-progress: false
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      MASSIVE_API_KEY: ${{ secrets.MASSIVE_API_KEY }}
+      UPSTASH_REDIS_REST_URL: ${{ secrets.UPSTASH_REDIS_REST_URL }}
+      UPSTASH_REDIS_REST_TOKEN: ${{ secrets.UPSTASH_REDIS_REST_TOKEN }}
+      VAPID_PUBLIC_KEY: ${{ secrets.VAPID_PUBLIC_KEY }}
+      VAPID_PRIVATE_KEY: ${{ secrets.VAPID_PRIVATE_KEY }}
+      VAPID_SUBJECT: ${{ secrets.VAPID_SUBJECT }}
+      DOW_CONSTITUENTS_URL: ${{ secrets.DOW_CONSTITUENTS_URL }}
+      SP500_CONSTITUENTS_URL: ${{ secrets.SP500_CONSTITUENTS_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Validate
+        run: npm test
+      - name: Load current index constituents
+        run: node scripts/build-universe.mjs universe.json
+      - name: Scan confirmed end-of-day bars
+        run: node scripts/scan.mjs universe.json auto scan-result.json
+      - name: Notify registered devices
+        run: node scripts/notify.mjs scan-result.json universe.json

@@ -1,0 +1,3 @@
+import {test} from 'node:test';import assert from 'node:assert/strict';import {tradingDatesFromBars} from './trading-calendar.mjs';
+test('calendar rejects insufficient and stale history',()=>{assert.throws(()=>tradingDatesFromBars([{date:'2026-11-01'}],{asOf:'2026-11-09',minimum:1}),/stale/);assert.throws(()=>tradingDatesFromBars([],{asOf:'2026-11-09'}),/insufficient/)});
+test('calendar accepts weekend and rejects duplicated dates',()=>{let b=[{date:'2026-11-06'}];assert.deepEqual(tradingDatesFromBars(b,{asOf:'2026-11-08',minimum:1}),['2026-11-06']);assert.throws(()=>tradingDatesFromBars([...b,...b],{asOf:'2026-11-08',minimum:1}),/unordered/)});

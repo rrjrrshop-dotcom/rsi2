@@ -1,0 +1,4 @@
+import {test} from 'node:test';import assert from 'node:assert/strict';import {validateSubscription,dispatchPush} from './web-push.mjs';
+const sub={endpoint:'https://fcm.googleapis.com/fcm/send/example',keys:{p256dh:'a'.repeat(87),auth:'b'.repeat(22)}};
+test('allows known push hosts and rejects private/host spoofing',()=>{assert.equal(validateSubscription(sub).endpoint,sub.endpoint);for(const endpoint of ['https://127.0.0.1/x','http://fcm.googleapis.com/x','https://fcm.googleapis.com.evil.test/x','https://evilpush.apple.com/x'])assert.throws(()=>validateSubscription({...sub,endpoint}))});
+test('counts delivery failures and expired subscriptions separately',async()=>{let i=0;const r=await dispatchPush({subscriptions:[sub,sub,sub],payload:{type:'buy',body:'2개 종목'},send:async()=>{if(i++===1)throw Object.assign(Error('gone'),{statusCode:410});if(i===3)throw Error('timeout')}});assert.deepEqual([r.delivered,r.expired,r.failed],[1,1,1])});

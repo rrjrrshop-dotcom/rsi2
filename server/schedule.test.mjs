@@ -1,0 +1,2 @@
+import {test} from 'node:test';import assert from 'node:assert/strict';import {readFile} from 'node:fs/promises';import {priorEasternDay} from '../api/quote.mjs';
+test('weekday schedule includes Saturday UTC for US Friday close',async()=>{const yml=await readFile(new URL('../.github/workflows/daily.yml',import.meta.url),'utf8');assert.match(yml,/0 11 \* \* 2-6/);assert.equal(priorEasternDay(new Date('2026-11-14T11:00:00Z')),'2026-11-13');assert.equal(priorEasternDay(new Date('2026-07-11T11:00:00Z')),'2026-07-10')});

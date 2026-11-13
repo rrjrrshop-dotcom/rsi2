@@ -1,0 +1,4 @@
+import {test} from 'node:test';import assert from 'node:assert/strict';import {describeVolumeProfile} from '../volume-profile.mjs';
+const bars=Array.from({length:65},(_,i)=>({date:new Date(Date.UTC(2026,0,i+1)).toISOString().slice(0,10),open:100,high:110,low:90,close:100,volume:100}));
+test('describes range with prices inside and outside',()=>{const inside=describeVolumeProfile(bars);assert.equal(inside.available,true);assert.equal(inside.position,'집중 구간 안');const changed=bars.map(x=>({...x}));changed.at(-1).close=120;assert.equal(describeVolumeProfile(changed).position,'집중 구간 위');assert.equal(describeVolumeProfile(changed).upper,inside.upper)});
+test('insufficient volume yields unavailable state',()=>{assert.equal(describeVolumeProfile(bars.map(b=>({...b,volume:null}))).available,false);assert.equal(describeVolumeProfile([]).available,false)});

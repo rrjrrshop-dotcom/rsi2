@@ -1,0 +1,4 @@
+import {test} from 'node:test';import assert from 'node:assert/strict';import {analyzeBreakout} from '../breakout.mjs';import {explainStrategy} from '../advice.mjs';
+const bars=()=>Array.from({length:270},(_,i)=>{const d=new Date(Date.UTC(2025,0,i+1)).toISOString().slice(0,10),p=100+i*.1;return {date:d,open:p,high:p+1,low:p-1,close:p,volume:1000}});
+test('ATR default risk is at most 1% for one unit and selectable 2%',()=>{let a=analyzeBreakout(bars()),b=analyzeBreakout(bars(),{riskPercent:2});assert.ok(a.unit*2*a.atr<=a.allocation*.01);assert.ok(b.unit*2*b.atr<=b.allocation*.02);assert.ok(b.unit>=a.unit);assert.throws(()=>analyzeBreakout(bars(),{riskPercent:3}))});
+test('advice distinguishes missing RS and does not guarantee a trade',()=>{assert.match(explainStrategy('trend',bars(),'AAPL'),/미확정/);assert.match(explainStrategy('1000',bars(),'AAPL'),/확인되지/);assert.match(explainStrategy('breakout',bars(),'AAPL'),/보장하지/)});
