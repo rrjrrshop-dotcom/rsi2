@@ -1,8 +1,10 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {estimate1000Score} from '../strategy1000-score.mjs';
-import {newHoldout,laterHoldout} from '../research/strategy1000-samples.mjs';
-test('frozen experimental candidate matches recorded comparison outputs, without treating them as trading guarantees',()=>{
- const expected={INCY:7,DCTH:8,QMCO:2,AMD:3,NVDA:1,EWY:1};
- for(const row of [...newHoldout,...laterHoldout]) assert.equal(estimate1000Score(row).score,expected[row.symbol],row.source);
+import * as groups from '../research/strategy1000-samples.mjs';
+test('weighted daily candidate reproduces 29 of 30 transcribed examples and preserves the unresolved PLTR error',()=>{
+ const rows=Object.values(groups).flat();
+ assert.equal(rows.length,30);
+ const differences=rows.filter(row=>estimate1000Score(row).score!==row.observed);
+ assert.deepEqual(differences.map(row=>({symbol:row.symbol,observed:row.observed,predicted:estimate1000Score(row).score})),[{symbol:'PLTR',observed:4,predicted:3}]);
 });

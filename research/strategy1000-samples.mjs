@@ -1,5 +1,5 @@
 // Transcribed directly from the user's distinct daily examples, not market OHLC.
-// All these examples informed the candidate; this is NOT an independent validation set.
+// All 30 examples informed the weighted v2 candidate; none is an independent validation set for v2.
 export const samples=[
  {symbol:'NVDA',date:'2026-11-11',observed:1,close:173.69,ema8:186.44,ema13:193.95,ema21:201.52,ema55:211.63,macd:-11.925,signal:-7.697,k:11.2,d:13.4,source:'02-1000031921.jpg'},
  {symbol:'PLTR',date:'2026-11-11',observed:4,close:172.98,ema8:171.71,ema13:176.08,ema21:180.40,ema55:179.72,macd:-6.383,signal:-3.569,k:32.5,d:25,source:'08-1000031927.jpg'},
@@ -8,7 +8,7 @@ export const samples=[
  {symbol:'TTWO',date:'2026-11-11',observed:7,close:230.37,ema8:214.16,ema13:210.43,ema21:208.43,ema55:211.84,macd:2.677,signal:-.864,k:83.2,d:82.8,source:'04-1000031917.jpg'}
 ];
 
-// Read only after the candidate formula was fixed. Screenshot dates are not explicit.
+// Read after the previous compressed candidate was fixed. These now inform weighted v2; dates are not explicit.
 export const heldout=[
  {symbol:'WRB',date:null,observed:7,close:75.64,ema8:75.30,ema13:74.76,ema21:73.99,ema55:72.13,macd:1.282,signal:1.178,k:61.3,d:73.3,source:'01-1000031340.jpg'},
  {symbol:'CHPT',date:null,observed:9,close:12.02,ema8:10.68,ema13:10.09,ema21:9.56,ema55:8.57,macd:.839,signal:.462,k:89.6,d:89.5,source:'04-1000031344.jpg'},
@@ -50,7 +50,7 @@ export const laterHoldout=[
  {symbol:'EWY',observed:1,close:139.78,ema8:146.83,ema13:150.63,ema21:155.53,ema55:166.06,macd:-8.069,signal:-6.905,k:20.1,d:24.1,source:'03-1000031346.jpg'}
 ];
 
-// New uploads; these examples were not used to select the current daily candidate.
+// New uploads were outside the previous compressed selection; they now inform weighted v2.
 export const novemberUploads=[
  {symbol:'NFLX',observed:3,close:63.67,ema8:63.89,ema13:64.35,ema21:65.40,ema55:69.32,macd:-1.842,signal:-2.088,k:30.2,d:30.4,source:'01-1000031951.jpg'},
  {symbol:'NBIS',observed:5,close:153,ema8:144.44,ema13:150.43,ema21:161.11,ema55:186.88,macd:-17.867,signal:-18.273,k:41.5,d:32.3,source:'08-1000031969.jpg'},
