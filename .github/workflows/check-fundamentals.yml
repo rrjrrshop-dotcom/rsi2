@@ -16,10 +16,13 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
+      - name: Validate financial screening
+        run: npm test
       - name: Check the documented financial data endpoint
         run: |
           node --input-type=module <<'JS'
           import assert from 'node:assert/strict';
+          import {readQuotelinksFinancials} from './server/quotelinks-fundamentals.mjs';
           const url = 'https://api.quotelinks.com/v1/financials/AAPL?period=quarterly&basis=original';
           const response = await fetch(url, {signal: AbortSignal.timeout(20000), redirect: 'error'});
           console.log(`Quotelinks financial endpoint: HTTP ${response.status}`);
@@ -34,4 +37,8 @@ jobs:
             assert.ok(Object.hasOwn(latest, key), `Missing financial field: ${key}`);
           }
           console.log('Financial response schema verified; raw financial values are not published.');
+          const through = new Date().toISOString().slice(0, 10);
+          const facts = readQuotelinksFinancials(data, through);
+          assert.ok(facts.shares && facts.balance, 'Recent shares and balance sheet must be usable');
+          console.log('Recent original-basis shares and balance sheet verified.');
           JS
