@@ -1,0 +1,37 @@
+name: Check financial data access
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/check-fundamentals.yml'
+      - 'server/quotelinks-fundamentals.mjs'
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Check the documented financial data endpoint
+        run: |
+          node --input-type=module <<'JS'
+          import assert from 'node:assert/strict';
+          const url = 'https://api.quotelinks.com/v1/financials/AAPL?period=quarterly&basis=original';
+          const response = await fetch(url, {signal: AbortSignal.timeout(20000), redirect: 'error'});
+          console.log(`Quotelinks financial endpoint: HTTP ${response.status}`);
+          assert.ok(response.ok, 'Financial data provider is unavailable from this runner');
+          const data = await response.json();
+          assert.equal(data.cik, 320193);
+          assert.equal(data.period, 'quarterly');
+          assert.equal(data.basis, 'original');
+          assert.ok(Array.isArray(data.periods) && data.periods.length);
+          const latest = data.periods[0];
+          for (const key of ['end', 'filed', 'accession', 'total_assets', 'total_liabilities', 'equity', 'shares_outstanding']) {
+            assert.ok(Object.hasOwn(latest, key), `Missing financial field: ${key}`);
+          }
+          console.log('Financial response schema verified; raw financial values are not published.');
+          JS
