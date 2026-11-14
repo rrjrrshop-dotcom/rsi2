@@ -1,0 +1,89 @@
+name: Verify breakout dividend adjustments
+on:
+  push:
+    branches: [verify-breakout-history]
+permissions:
+  contents: read
+jobs:
+  compare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 16
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Compare historical price bases and ATR seeds
+        env:
+          MASSIVE_API_KEY: ${{ secrets.MASSIVE_API_KEY }}
+        run: |
+          node --input-type=module <<'JS'
+          import assert from 'node:assert/strict';
+          import {analyzeBreakout} from './breakout.mjs';
+          import {rateLimit} from './server/batch-scan.mjs';
+          import {makeMarketData} from './server/market-data.mjs';
+          const fetcher = rateLimit((url, options) => fetch(url, {...options, signal: AbortSignal.timeout(12000)}), {intervalMs:13000});
+          const client = makeMarketData({key:process.env.MASSIVE_API_KEY,fetcher,maxRetries:2});
+          const older = [{"symbol":"LITE","date":"2026-10-28","close":913.95,"high20":1143,"high55":1143,"low10":736.01,"low20":736.01,"atr":69.18,"unit":14,"stop":1004.63,"state":"wait"},{"symbol":"GTLB","date":"2026-10-29","close":56.65,"high20":58.01,"high55":58.01,"low10":52.2,"low20":47.34,"atr":2.45,"unit":408,"stop":53.11,"state":"wait"},{"symbol":"FDXF","date":"2026-10-29","close":109.69,"high20":116.09,"high55":152.67,"low10":103.48,"low20":103.48,"atr":4.55,"unit":219,"stop":106.96,"state":"wait"},{"symbol":"AAPL","date":"2026-10-30","close":344.63,"high20":351.73,"high55":351.73,"low10":338.7,"low20":330.61,"atr":6.88,"unit":145,"stop":337.98,"state":"wait"},{"symbol":"WING","date":"2026-10-30","close":149.73,"high20":145.66,"high55":145.66,"low10":115.15,"low20":103.65,"atr":7.11,"unit":140,"stop":135.51,"state":"both"},{"symbol":"AMZN","date":"2026-11-02","close":245.63,"high20":265.34,"high55":267.56,"low10":229.36,"low20":229.36,"atr":7.31,"unit":136,"stop":250.73,"state":"wait"},{"symbol":"FN","date":"2026-11-02","close":314.7,"high20":515,"high55":515,"low10":305.63,"low20":305.63,"atr":25.93,"unit":38,"stop":463.15,"state":"wait"},{"symbol":"FDX","date":"2026-11-02","close":318.25,"high20":318.46,"high55":340.35,"low10":291.88,"low20":285.04,"atr":7.19,"unit":139,"stop":304.08,"state":"wait"},{"symbol":"MSFT","date":"2026-11-02","close":507.12,"high20":551.15,"high55":551.15,"low10":514.35,"low20":514.35,"atr":12.43,"unit":80,"stop":526.28,"state":"down"},{"symbol":"LLY","date":"2026-11-03","close":1409.38,"high20":1449.68,"high55":1449.68,"low10":1257.62,"low20":1131.21,"atr":42.06,"unit":23,"stop":1365.57,"state":"wait"},{"symbol":"AEHR","date":"2026-11-03","close":65.11,"high20":107.93,"high55":146.6,"low10":50.52,"low20":50.52,"atr":7.9,"unit":126,"stop":92.14,"state":"wait"},{"symbol":"ASX","date":"2026-11-03","close":39.05,"high20":47.83,"high55":47.93,"low10":37.28,"low20":37.28,"atr":2.26,"unit":443,"stop":43.32,"state":"wait"},{"symbol":"AMZN","date":"2026-11-03","close":250.69,"high20":265.34,"high55":267.56,"low10":229.36,"low20":229.36,"atr":7.28,"unit":137,"stop":250.78,"state":"wait"},{"symbol":"PYPL","date":"2026-11-03","close":58.21,"high20":59.03,"high55":62.58,"low10":54.34,"low20":53.98,"atr":1.43,"unit":699,"stop":56.17,"state":"wait"},{"symbol":"OSCR","date":"2026-11-04","close":35.19,"high20":35.01,"high55":35.01,"low10":29.62,"low20":29.62,"atr":1.68,"unit":593,"stop":31.82,"state":"both"},{"symbol":"NU","date":"2026-11-04","close":11.99,"high20":16.19,"high55":16.19,"low10":11.45,"low20":11.45,"atr":0.66,"unit":1522,"stop":14.88,"state":"wait"},{"symbol":"SHW","date":"2026-11-04","close":363.5,"high20":353.1,"high55":356.06,"low10":313.25,"low20":311.12,"atr":10.1,"unit":99,"stop":343.31,"state":"both"},{"symbol":"APP","date":"2026-11-04","close":271.75,"high20":283.66,"high55":338.34,"low10":225.19,"low20":225.19,"atr":14.43,"unit":69,"stop":254.8,"state":"wait"},{"symbol":"COST","date":"2026-11-04","close":1046.47,"high20":1042.57,"high55":1042.57,"low10":978.87,"low20":936.22,"atr":18.1,"unit":55,"stop":1010.26,"state":"both"},{"symbol":"AMZN","date":"2026-11-05","close":260.21,"high20":271.49,"high55":271.49,"low10":229.36,"low20":229.36,"atr":8.61,"unit":116,"stop":254.28,"state":"wait"},{"symbol":"SIRI","date":"2026-11-06","close":32.4,"high20":33.76,"high55":33.76,"low10":26.72,"low20":26.33,"atr":0.86,"unit":1157,"stop":32.03,"state":"wait"},{"symbol":"SPCX","date":"2026-11-06","close":134.27,"high20":167.07,"high55":176.42,"low10":120.39,"low20":120.39,"atr":8.19,"unit":122,"stop":150.69,"state":"wait"},{"symbol":"ABNB","date":"2026-11-06","close":189.99,"high20":180.06,"high55":193.45,"low10":164.1,"low20":162.16,"atr":6.25,"unit":159,"stop":177.49,"state":"s1"},{"symbol":"MRVL","date":"2026-11-06","close":141.2,"high20":283.78,"high55":301.2,"low10":132.54,"low20":132.54,"atr":17.48,"unit":57,"stop":248.82,"state":"wait"},{"symbol":"NVDA","date":"2026-11-06","close":186.64,"high20":233.92,"high55":243.37,"low10":181.46,"low20":181.46,"atr":7.32,"unit":136,"stop":219.28,"state":"wait"},{"symbol":"OKLO","date":"2026-11-09","close":26.84,"high20":34.0,"high55":46.2,"low10":18.53,"low20":18.53,"atr":2.43,"unit":412,"stop":29.15,"state":"wait"},{"symbol":"XMTR","date":"2026-11-09","close":120.59,"high20":117.94,"high55":117.94,"low10":87.0,"low20":85.84,"atr":7.8,"unit":128,"stop":104.99,"state":"both"},{"symbol":"ECHO","date":"2026-11-09","close":101.19,"high20":102.46,"high55":102.46,"low10":87.43,"low20":82.73,"atr":4.64,"unit":215,"stop":93.19,"state":"wait"}];
+          const references = Object.groupBy ? Object.groupBy(older, x=>x.symbol) : older.reduce((acc,x)=>((acc[x.symbol]??=[]).push(x),acc),Object.create(null));
+          const through='2026-11-13',from='2025-05-12';
+          const bySymbol = new Map(Object.keys(references).map(symbol=>[symbol,[]]));
+          const url = new URL('https://api.massive.com/stocks/v1/dividends');
+          url.search = new URLSearchParams({'ex_dividend_date.gt':from,'ex_dividend_date.lte':through,limit:'5000',sort:'ex_dividend_date.asc'});
+          const dividendPages = new Set();
+          let page = url;
+          while (page) {
+           assert.equal(page.origin,url.origin);
+           assert.equal(page.pathname,url.pathname);
+           assert.ok(!dividendPages.has(page.href));
+           dividendPages.add(page.href);
+           page.searchParams.set('apiKey',process.env.MASSIVE_API_KEY);
+           const response = await fetcher(page);
+           assert.equal(response.status,200,'dividend endpoint returned '+response.status);
+           const data = await response.json();
+           assert.ok(Array.isArray(data.results));
+           for (const item of data.results) bySymbol.get(item.ticker)?.push(item);
+           page=data.next_url?new URL(data.next_url):null;
+          }
+          console.log('DIVIDEND_PAGES '+dividendPages.size);
+          const risk = {riskPercent:2,includeLines:false};
+          const pick = ({entry,close,high20,high55,low10,low20,atr,unit,stop,state}) => ({entry,close,high20,high55,low10,low20,atr,unit,stop,state});
+          const prices = (bar,factor) => ({...bar,open:bar.open*factor,high:bar.high*factor,low:bar.low*factor,close:bar.close*factor});
+          const seedAtrs = bars => Object.fromEntries([55,56,60,70,75,80,90,100,125,150,200,250,350].filter(n=>n<=bars.length).map(n=>{
+           const a=analyzeBreakout(bars.slice(-Math.max(n,56)),risk);
+           return [n,a.atr];
+          }));
+          for(const [symbol,cases] of Object.entries(references)){
+           let history;
+           try{history=await client.daily(symbol,from,through)}catch(error){console.log("BREAKOUT_HISTORY_UNAVAILABLE "+JSON.stringify({symbol,error:error.message}));continue;}
+           const events=bySymbol.get(symbol).filter(d=>d.currency==='USD');
+           for(const ref of cases){
+            const bars=history.filter(b=>b.date<=ref.date);
+            if(bars.at(-1)?.date!==ref.date || bars.length<56){console.log("BREAKOUT_HISTORY_UNAVAILABLE "+JSON.stringify({symbol,date:ref.date,count:bars.length,last:bars.at(-1)?.date}));continue;}
+            const applied=[];
+            const dividendAdjusted=bars.map(b=>({...b}));
+            for (const event of events.sort((a,b)=>a.ex_dividend_date.localeCompare(b.ex_dividend_date))) {
+             const date=event.ex_dividend_date;
+             if(date>ref.date)continue;
+             const i=bars.findIndex(row=>row.date>=date);
+             if(i<=0)continue;
+             const amount=event.split_adjusted_cash_amount,previousClose=bars[i-1].close;
+             const one=1-amount/previousClose;
+             assert.ok(Number.isFinite(one)&&one>0&&one<=1);
+             for(let j=0;j<i;j++)dividendAdjusted[j]=prices(dividendAdjusted[j],one);
+             applied.push({date,amount,one,cumulative:event.historical_adjustment_factor,previousDate:bars[i-1].date,distribution:event.distribution_type});
+            }
+            const last20 = bars.slice(-21,-1);
+            const lowDate = last20.reduce((prev,bar)=>!prev||bar.low<prev.low?bar:prev,null).date;
+            const raw = pick(analyzeBreakout(bars,risk));
+            const adjusted=pick(analyzeBreakout(dividendAdjusted,risk));
+            const tr = dividendAdjusted.map((b,i) => i ? Math.max(b.high-b.low,Math.abs(b.high-dividendAdjusted[i-1].close),Math.abs(b.low-dividendAdjusted[i-1].close)) : b.high-b.low);
+            const firstSeed = tr.slice(1).reduce((v,x)=>(v*19+x)/20,tr[0]);
+            const noLastBar = tr.slice(20,-1).reduce((v,x)=>(v*19+x)/20,tr.slice(0,20).reduce((a,b)=>a+b,0)/20);
+            const cents = pick(analyzeBreakout(dividendAdjusted.map(x=>({...x,open:+x.open.toFixed(2),high:+x.high.toFixed(2),low:+x.low.toFixed(2),close:+x.close.toFixed(2)})),risk));
+           const nonUsd = events.length !== bySymbol.get(symbol).length;
+            const comparison = {symbol,ref,raw,adjusted,cents,lowDate,dividends:applied.slice(-4),nonUsd,
+             seedAtrs:seedAtrs(dividendAdjusted),firstSeed,noLastBar};
+            console.log('DIVIDEND_COMPARISON ' + JSON.stringify(comparison));
+           }
+          }
+          JS
