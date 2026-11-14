@@ -1,7 +1,7 @@
 import {priorEasternDay, dataAgeDays} from './quote.mjs';
 import {constantTimeEqual} from '../server/subscriptions.mjs';
 import {resultStore} from '../server/result-store.mjs';
-import {hasCurrentRecommendationScreen} from '../recommendation-policy.mjs';
+import {hasCurrentRecommendationScreen, RECOMMENDATION_SCOPES} from '../recommendation-policy.mjs';
 
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
@@ -17,8 +17,10 @@ export default async function handler(req, res) {
     }
     const result = await store.load();
     if (!result) return res.status(404).json({error: '아직 저장된 검색 결과가 없습니다.'});
-    if (result.preliminary && !hasCurrentRecommendationScreen(result)) {
-      result.preliminary = {...result.preliminary, recommendations: {}};
+    if (result.preliminary) {
+      for (const [scope, {list}] of Object.entries(RECOMMENDATION_SCOPES)) {
+        if (!hasCurrentRecommendationScreen(result, scope)) result.preliminary[list] = {};
+      }
     }
     const ageDays = dataAgeDays(result.expectedDate, priorEasternDay());
     return res.status(200).json({...result, ageDays, staleWarning: ageDays > 7});

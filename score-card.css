@@ -61,7 +61,32 @@
 .panel .score-card-note { margin: 7px 0 0; color: #466066; }
 
 .recommend-items.top-results { grid-template-columns: repeat(auto-fit, minmax(min(100%, 245px), 1fr)); align-items: start; }
-.recommend-panel .recommend-scope { color: #375b51; }
+.recommend-scope-picker {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.recommend-panel .recommend-scope-picker button {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  padding: 9px;
+  text-align: left;
+  color: #23423c;
+  background: #f7fcfa;
+  border: 1px solid #9dbfb3;
+}
+.recommend-panel .recommend-scope-picker button[aria-pressed="true"] {
+  background: #154b42;
+  border-color: #154b42;
+  color: #fff;
+}
+.recommend-scope-picker button:focus-visible { outline: 3px solid #196858; outline-offset: 3px; }
+.recommend-scope-picker img { display: block; flex: none; object-fit: cover; border-radius: 9px; }
+.recommend-scope-picker strong { display: block; font-size: 14px; line-height: 1.25; }
+.recommend-scope-picker small { display: block; margin-top: 4px; font-size: 11px; line-height: 1.35; font-weight: 500; }
+.recommend-panel .recommend-order { margin: 0 0 7px; color: #375b51; font-size: 12px; }
 .recommend-item { min-width: 0; padding: 8px; background: #f9fffc; border: 1px solid #b7dbce; border-radius: 10px; }
 .recommend-items .recommend-open { width: 100%; padding: 6px; border: 0; }
 .recommend-open strong { overflow-wrap: anywhere; }
@@ -75,4 +100,5 @@
 .watch-open strong { overflow-wrap: anywhere; }
 @media (max-width: 490px) {
   .watch-items.top-results { grid-template-columns: 1fr; }
+  .recommend-panel .recommend-scope-picker button { flex-direction: column; align-items: flex-start; gap: 5px; }
 }

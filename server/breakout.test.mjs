@@ -1,7 +1,19 @@
 import {test} from 'node:test';import assert from 'node:assert/strict';import {analyzeBreakout} from '../breakout.mjs';
+import {scoreAnalysis} from '../scores.mjs';
 const bars=()=>Array.from({length:70},(_,i)=>({date:`d${i}`,open:100,high:102,low:98,close:100,volume:100}));
 test('channels exclude the evaluated bar and detect breakout',()=>{let b=bars();b.at(-1).high=120;b.at(-1).close=110;let r=analyzeBreakout(b);assert.equal(r.high20,102);assert.equal(r.high55,102);assert.equal(r.state,'both');assert.equal(r.entry,110)});
 test('system 1 and downside states use prior channel',()=>{let b=bars();b[20].high=115;b.at(-1).close=105;assert.equal(analyzeBreakout(b).state,'s1');b.at(-1).close=97;assert.equal(analyzeBreakout(b).state,'down')});
 test('Wilder ATR handles gaps and sizing uses unrounded ATR',()=>{let b=bars();b.at(-1).high=110;b.at(-1).low=108;b.at(-1).close=109;let r=analyzeBreakout(b);assert.equal(r.atr,(4*19+10)/20);assert.equal(r.unit,Math.floor(1000/(2*r.atr)));assert.equal(r.stop,r.entry-2*r.atr);assert.equal(r.levels[1],r.entry+.5*r.atr);assert.equal(r.total,r.costs.reduce((a,c)=>a+c,0))});
 test('affordability accounts for rising unit costs',()=>{let b=bars();let r=analyzeBreakout(b,{allocation:100000,riskPercent:2});assert.equal(r.unit,250);assert.equal(r.affordable,3);assert.ok(r.total>r.allocation)});
 test('reject insufficient or invalid data',()=>{assert.throws(()=>analyzeBreakout(bars().slice(0,55)));assert.throws(()=>analyzeBreakout(bars(),{allocation:0}))});
+
+test('an intraday breach or a close that touches the channel does not earn an entry point', () => {
+ const input = bars();
+ input.at(-1).high = 120;
+ for (const [close, state, passed] of [[101.5, 'wait', 0], [102, 'wait', 0], [102.01, 'both', 2]]) {
+  input.at(-1).close = close;
+  const result = analyzeBreakout(input);
+  assert.equal(result.state, state);
+  assert.equal(scoreAnalysis('breakout', result).passed, passed);
+ }
+});

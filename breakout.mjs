@@ -14,8 +14,12 @@ export function analyzeBreakout(bars,{allocation=100000,riskPercent=1,includeLin
  atr=trs.slice(0,20).reduce((a,b)=>a+b,0)/20;for(let i=20;i<trs.length;i++)atr=(atr*19+trs[i])/20;
  if(!(atr>0))throw Error('ATR이 0이어서 수량을 계산할 수 없습니다.');
  const i=bars.length-1,b=bars[i],high20=channel(i,20,'high',Math.max),high55=channel(i,55,'high',Math.max),low10=channel(i,10,'low',Math.min),low20=channel(i,20,'low',Math.min);
- const state=b.close>high55?'both':b.close>high20?'s1':b.close<low20?'down':'wait';
+ const signals = {
+  s1: b.close > high20, s2: b.close > high55,
+  exitS1: b.close < low10, exitS2: b.close < low20,
+ };
+ const state=signals.s2?'both':signals.s1?'s1':signals.exitS2?'down':'wait';
  const entry=state==='both'||state==='s1'?b.close:high20,{unit,stop}=calculatePosition({entry,atr,allocation,riskPercent}),levels=[0,.5,1,1.5].map(x=>entry+x*atr),costs=levels.map(p=>p*unit);let sum=0,affordable=0;for(const cost of costs){if(unit>0&&sum+cost<=allocation){sum+=cost;affordable++}else break}
  const lines=includeLines?bars.map((_,j)=>j<55?null:{high20:channel(j,20,'high',Math.max),high55:channel(j,55,'high',Math.max),low10:channel(j,10,'low',Math.min),low20:channel(j,20,'low',Math.min)}):[];
- return {bars,date:b.date,close:b.close,atr,high20,high55,low10,low20,state,entry,unit,stop,levels,costs,total:costs.reduce((a,c)=>a+c,0),affordable,allocation,riskPercent,lines};
+ return {bars,date:b.date,close:b.close,atr,high20,high55,low10,low20,signals,state,entry,unit,stop,levels,costs,total:costs.reduce((a,c)=>a+c,0),affordable,allocation,riskPercent,lines};
 }

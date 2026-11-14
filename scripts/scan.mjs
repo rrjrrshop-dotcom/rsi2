@@ -1,71 +1,130 @@
-import {attachSecurityMetadata} from '../server/scan-metadata.mjs';import {readFile,writeFile} from 'node:fs/promises';import {resultStore} from '../server/result-store.mjs';
-import {tradingDatesFromBars} from '../server/trading-calendar.mjs';import {priorEasternDay} from '../api/quote.mjs';
-import {makeMarketData} from '../server/market-data.mjs';import {intradayContext,compareFrames} from '../intraday1000.mjs';import {scanGrouped} from '../server/grouped-scan.mjs';import {snapshotStore,withSnapshotCache} from '../server/snapshot-store.mjs';import {rateLimit} from '../server/batch-scan.mjs';
+import {readFile, rename, writeFile} from 'node:fs/promises';
+import {attachSecurityMetadata} from '../server/scan-metadata.mjs';
+import {resultStore} from '../server/result-store.mjs';
+import {tradingDatesFromBars} from '../server/trading-calendar.mjs';
+import {priorEasternDay} from '../api/quote.mjs';
+import {makeMarketData} from '../server/market-data.mjs';
+import {intradayContext, compareFrames} from '../intraday1000.mjs';
+import {scanGrouped} from '../server/grouped-scan.mjs';
+import {snapshotStore, withSnapshotCache} from '../server/snapshot-store.mjs';
+import {rateLimit} from '../server/batch-scan.mjs';
 import {daysBefore, MAX_FUNDAMENTALS_AGE_DAYS} from '../server/sec-fundamentals.mjs';
 import {loadQuotelinksFundamentals} from '../server/quotelinks-fundamentals.mjs';
 import {screenRecommendations} from '../server/recommendation-screen.mjs';
 import {indexRecommendationUniverse} from '../server/index-constituents.mjs';
-import {hasCurrentRecommendationScreen, RECOMMENDATION_SCOPE} from '../recommendation-policy.mjs';
+import {hasCurrentRecommendationScreen, RECOMMENDATION_SCOPES} from '../recommendation-policy.mjs';
 
-async function prepareRecommendations(client, securities, through) {
-  const directory = await client.stockDirectory(through);
-  console.log(`Company identifiers loaded: ${directory.length}`);
-  const fundamentals = await loadQuotelinksFundamentals(securities, through, {directory, onProgress: ({completed, total}) => {
-    if (completed % 100 === 0 || completed === total) console.log(`Financial reports: ${completed}/${total}`);
-  }});
-  const [closingBars, splits] = await Promise.all([
-   client.dailyMarket(through, {adjusted: false}),
-   client.splits(daysBefore(through, MAX_FUNDAMENTALS_AGE_DAYS), through),
+async function prepareRecommendations(client, directory, candidates, through, signal) {
+  const securities = [...new Map([...candidates.all, ...candidates.major].map(item => [item.symbol, item])).values()];
+  const [fundamentals, closingBars, splits] = await Promise.all([
+    loadQuotelinksFundamentals(securities, through, {directory, signal, onProgress: ({completed, total}) => {
+      if (completed % 100 === 0 || completed === total) console.log(`Financial reports: ${completed}/${total}`);
+    }}),
+    client.dailyMarket(through, {adjusted: false}),
+    client.splits(daysBefore(through, MAX_FUNDAMENTALS_AGE_DAYS), through),
   ]);
   if (!closingBars.length) throw Error('시가총액 기준일의 종가 데이터가 없습니다.');
   const closes = new Map(closingBars.map(row => [row.symbol, row.close]));
-  const screen = screenRecommendations(securities, fundamentals, closes, splits, through);
-  screen.summary.source = 'SEC EDGAR via Quotelinks';
-  if (screen.summary.status !== 'applied') throw Error('시가총액과 재무건전성을 확인할 자료가 부족합니다.');
-  console.log('Recommendation screen:', JSON.stringify(screen.summary));
-  return screen;
+  return Object.fromEntries(Object.entries(RECOMMENDATION_SCOPES).map(([key, {id, excludedFraction}]) => {
+    const screen = screenRecommendations(candidates[key], fundamentals, closes, splits, through, excludedFraction);
+    Object.assign(screen.summary, {source: 'SEC EDGAR via Quotelinks', scope: id});
+    if (screen.summary.status !== 'applied') throw Error(`${id} 시가총액과 재무건전성을 확인할 자료가 부족합니다.`);
+    console.log('Recommendation screen:', JSON.stringify(screen.summary));
+    return [key, screen];
+  }));
 }
-async function main(){
- const [universePath,datesPath,outputPath='scan-result.json']=process.argv.slice(2);
- if(!universePath||!datesPath)throw Error('Usage: node scripts/scan.mjs universe.json trading-dates.json [output.json]');
- const universe=JSON.parse(await readFile(universePath,'utf8'));let dates=datesPath==='auto'?null:JSON.parse(await readFile(datesPath,'utf8'));
- if(!universe.complete||!Array.isArray(universe.securities))throw Error('Universe is incomplete: do not report this scan as complete');
- const symbols=universe.securities.map(x=>x.symbol);
- const limitedFetch=rateLimit((url,options)=>fetch(url,{...options,signal:AbortSignal.timeout(8000)}),{intervalMs:13000});
- const client=makeMarketData({key:process.env.MASSIVE_API_KEY,maxRetries:2,fetcher:limitedFetch});
- const fetchDaily=date=>client.dailyMarket(date);
- if(!dates){const to=priorEasternDay(),d=new Date(`${to}T00:00:00Z`);d.setUTCDate(d.getUTCDate()-550);const reference=await client.daily('SPY',d.toISOString().slice(0,10),to);dates=tradingDatesFromBars(reference,{asOf:to}).slice(-350);}
- // Split-adjusted historical values may change after a corporate action. Reuse
- // snapshots only within the same scan date; do not carry them across sessions.
- const cachePath=`.rsi-cache/${dates.at(-1)}`;
- const getDaily=withSnapshotCache(snapshotStore(cachePath),fetchDaily);
- if (!Array.isArray(dates) || !dates.length) throw Error('확정 거래일이 없습니다.');
- // Verify financial data before spending the free-plan quota on historical prices.
- const indexed = indexRecommendationUniverse(universe.securities);
- const screen = await prepareRecommendations(client,indexed.securities,dates.at(-1));
- const membership = new Map(indexed.securities.filter(security => screen.eligible.has(security.symbol))
-   .map(security => [security.symbol, security.indexes]));
- const result=await scanGrouped({symbols,dates,getDaily,recommendationSymbols:screen.eligible,recommendationMembership:membership,onProgress:p=>console.error(`${p.completed}/${p.total} ${p.date}`)});
- result.preliminary.recommendationScreen={...screen.summary,scope:RECOMMENDATION_SCOPE,indexCounts:indexed.counts,indexSymbols:indexed.securities.length,indexSources:universe.indexSources};
- console.log('Recommendation counts:',JSON.stringify(Object.fromEntries(Object.entries(result.preliminary.recommendations).map(([tab,rows])=>[tab,rows.length]))));
- // Only the displayed 1000 candidates receive a 15-minute comparison;
- // all other securities retain the daily-only ranking. Failures remain explicit.
- const through=result.expectedDate,fromDate=new Date(through+'T00:00:00Z');fromDate.setUTCDate(fromDate.getUTCDate()-7);
- for(const candidate of result.preliminary.recommendations['1000']){
-  try{const frame=intradayContext(await client.fifteenMinute(candidate.symbol,fromDate.toISOString().slice(0,10),through),through),compared=compareFrames(candidate.dailyFrame,frame);candidate.frameComparison={...compared,through,method:frame.method}}
-  catch(e){candidate.frameComparison={status:'unavailable',label:'15분봉 비교 불가',through};console.error(`${candidate.symbol}: 15분봉 확인 실패 (${e.message})`)}
-  delete candidate.dailyFrame;
- }
- const finalResult={...attachSecurityMetadata(result,universe.securities),createdAt:new Date().toISOString()};const tmp=`${outputPath}.${process.pid}.tmp`;await writeFile(tmp,JSON.stringify(finalResult,null,2));const {rename}=await import('node:fs/promises');await rename(tmp,outputPath);
- if (process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN) {
-  const store = resultStore({url:process.env.UPSTASH_REDIS_REST_URL,token:process.env.UPSTASH_REDIS_REST_TOKEN});
-  await store.save(finalResult);
-  const saved = await store.load();
-  if (saved?.createdAt !== finalResult.createdAt || !hasCurrentRecommendationScreen(saved)) {
-   throw Error('저장된 추천 결과의 지수 범위와 기준일을 확인할 수 없습니다.');
+
+function recommendationCounts(preliminary) {
+  return Object.fromEntries(Object.entries(RECOMMENDATION_SCOPES).map(([key, {list}]) => [
+    key, Object.fromEntries(Object.entries(preliminary[list]).map(([tab, rows]) => [tab, rows.length])),
+  ]));
+}
+
+async function main() {
+  const [universePath, datesPath, outputPath = 'scan-result.json'] = process.argv.slice(2);
+  if (!universePath || !datesPath) throw Error('Usage: node scripts/scan.mjs universe.json trading-dates.json [output.json]');
+  const universe = JSON.parse(await readFile(universePath, 'utf8'));
+  if (!universe.complete || !Array.isArray(universe.securities)) throw Error('Universe is incomplete: do not report this scan as complete');
+  const abort = new AbortController();
+  const limitedFetch = rateLimit((url, options) => {
+    abort.signal.throwIfAborted();
+    return fetch(url, {...options, signal: AbortSignal.any([abort.signal, AbortSignal.timeout(8000)])});
+  }, {intervalMs: 13000});
+  const client = makeMarketData({key: process.env.MASSIVE_API_KEY, maxRetries: 2, fetcher: limitedFetch});
+  const lastDate = priorEasternDay();
+  const dates = datesPath === 'auto'
+    ? tradingDatesFromBars(await client.daily('SPY', daysBefore(lastDate, 550), lastDate), {asOf: lastDate}).slice(-350)
+    : JSON.parse(await readFile(datesPath, 'utf8'));
+  if (!Array.isArray(dates) || !dates.length) throw Error('확정 거래일이 없습니다.');
+  const through = dates.at(-1);
+  // Split-adjusted historical values may change after a corporate action.
+  const getDaily = withSnapshotCache(snapshotStore(`.rsi-cache/${through}`), date => client.dailyMarket(date));
+
+  const indexed = indexRecommendationUniverse(universe.securities);
+  const directory = await client.stockDirectory(through);
+  const listed = directory.filter(row => /^[A-Z0-9]{4}$/.test(row.exchange ?? '') && row.exchange !== 'OOTC')
+    .map(({ticker, name}) => ({symbol: ticker, name, kind: 'stock'}));
+  if (!listed.length || new Set(listed.map(row => row.symbol)).size !== listed.length) {
+    throw Error('기준일 거래소 상장 보통주 목록이 비어 있거나 중복되었습니다.');
   }
-  console.log('Saved recommendation counts:', JSON.stringify(Object.fromEntries(Object.entries(saved.preliminary.recommendations).map(([tab,rows])=>[tab,rows.length]))));
- }
- console.log(`Complete: ${result.total} symbols, ${result.buy.length} buy, ${result.stale.length} stale`);
+  console.log(`US exchange-listed common stocks: ${listed.length}`);
+  const screens = prepareRecommendations(client, directory, {major: indexed.securities, all: listed}, through, abort.signal);
+  const scan = scanGrouped({
+    symbols: universe.securities.map(row => row.symbol), dates,
+    getDaily: date => {
+      abort.signal.throwIfAborted();
+      return getDaily(date);
+    },
+    marketSymbols: listed.map(row => row.symbol),
+    recommendationMembership: new Map(indexed.securities.map(({symbol, indexes}) => [symbol, indexes])),
+    getRecommendationCandidates: async () => {
+      const {major, all} = await screens;
+      return {major: major.eligible, all: all.eligible};
+    },
+    onProgress: ({completed, total, date}) => console.error(`${completed}/${total} ${date}`),
+  });
+  let result, screened;
+  try {
+    [result, screened] = await Promise.all([scan, screens]);
+  } catch (error) {
+    abort.abort(error);
+    throw error;
+  }
+  result.preliminary.recommendationScreen = {...screened.major.summary, indexCounts: indexed.counts,
+    indexSymbols: indexed.securities.length, indexSources: universe.indexSources};
+  result.preliminary.marketRecommendationScreen = screened.all.summary;
+  console.log('Recommendation counts:', JSON.stringify(recommendationCounts(result.preliminary)));
+
+  // The two rankings may share a ticker. Compare it against the same daily frame once.
+  const candidates = Object.values(RECOMMENDATION_SCOPES).flatMap(({list}) => result.preliminary[list]['1000']);
+  const frames = new Map();
+  for (const candidate of candidates) {
+    if (!frames.has(candidate.symbol)) {
+      try {
+        const bars = await client.fifteenMinute(candidate.symbol, daysBefore(through, 7), through);
+        const frame = intradayContext(bars, through);
+        frames.set(candidate.symbol, {...compareFrames(candidate.dailyFrame, frame), through, method: frame.method});
+      } catch (error) {
+        frames.set(candidate.symbol, {status: 'unavailable', label: '15분봉 비교 불가', through});
+        console.error(`${candidate.symbol}: 15분봉 확인 실패 (${error.message})`);
+      }
+    }
+    candidate.frameComparison = frames.get(candidate.symbol);
+    delete candidate.dailyFrame;
+  }
+  const finalResult = {...attachSecurityMetadata(result, universe.securities), createdAt: new Date().toISOString()};
+  const tmp = `${outputPath}.${process.pid}.tmp`;
+  await writeFile(tmp, JSON.stringify(finalResult, null, 2));
+  await rename(tmp, outputPath);
+  if (process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN) {
+    const store = resultStore({url: process.env.UPSTASH_REDIS_REST_URL, token: process.env.UPSTASH_REDIS_REST_TOKEN});
+    await store.save(finalResult);
+    const saved = await store.load();
+    if (saved?.createdAt !== finalResult.createdAt || !Object.keys(RECOMMENDATION_SCOPES).every(scope => hasCurrentRecommendationScreen(saved, scope))) {
+      throw Error('저장된 추천 결과의 범위와 기준일을 확인할 수 없습니다.');
+    }
+    console.log('Saved recommendation counts:', JSON.stringify(recommendationCounts(saved.preliminary)));
+  }
+  console.log(`Complete: ${result.total} symbols, ${result.buy.length} buy, ${result.stale.length} stale`);
 }
-main().catch(e=>{console.error(e.message);process.exitCode=1});
+main().catch(error => {console.error(error.message); process.exitCode = 1});

@@ -30,15 +30,20 @@ export function readQuotelinksFinancials(data, through) {
 }
 
 /** Quotelinks permits private, individual use. Never publish its raw financial responses. */
-export async function loadQuotelinksFundamentals(securities, through, {directory, fetcher = fetch, wait = sleep, onProgress = () => {}} = {}) {
+export async function loadQuotelinksFundamentals(securities, through, {directory, fetcher = fetch, wait = sleep, onProgress = () => {}, signal} = {}) {
   if (!directory) throw Error('재무자료를 연결할 기업 식별자 목록이 없습니다.');
   const issuers = [...matchSecIssuers(securities, directory)];
   if (!issuers.length) throw Error('자동 검색 대상의 공시 식별자를 확인할 수 없습니다.');
-  const limitedFetch = rateLimit(fetcher, {intervalMs: 550, sleep: wait});
+  const limitedFetch = rateLimit((url, options) => {
+    signal?.throwIfAborted();
+    return fetcher(url, options);
+  }, {intervalMs: 550, sleep: wait});
   async function request(cik, period) {
     const url = `https://api.quotelinks.com/v1/financials/${cik}?period=${period}&basis=original`;
     for (let attempt = 0; ; attempt++) {
-      const response = await limitedFetch(url, {headers: {Accept: 'application/json'}, redirect: 'error', signal: AbortSignal.timeout(20000)});
+      const timeout = AbortSignal.timeout(20000);
+      const response = await limitedFetch(url, {headers: {Accept: 'application/json'}, redirect: 'error',
+        signal: signal ? AbortSignal.any([timeout, signal]) : timeout});
       if (response.status === 404) return null;
       if (!response.ok) {
         if ([429, 502, 503, 504].includes(response.status) && attempt < 2) {

@@ -56,6 +56,9 @@ test('filter adjusts shares for splits, removes bottom 30% with ties, and exclud
   const {eligible, summary} = screenRecommendations(securities, facts, closes, splits, through);
   assert.deepEqual([...eligible], ['ST7', 'ST8', 'ST9']);
   assert.deepEqual(summary, {version: RECOMMENDATION_SCREEN_VERSION, status: 'applied', through, stocks: 11, comparable: 10, excludedSmall: 4, excludedFinancials: 3, eligible: 3});
+  const market = screenRecommendations(securities, facts, closes, splits, through, 0.20);
+  assert.deepEqual([...market.eligible], ['ST2', 'ST3', 'ST7', 'ST8', 'ST9']);
+  assert.equal(market.summary.excludedSmall, 2);
 });
 
 test('recommendations require both verified index membership and eligibility, and retain the scored conditions', async () => {
@@ -65,21 +68,24 @@ test('recommendations require both verified index membership and eligibility, an
     const date = new Date(Date.UTC(2025, 0, day + 1));
     if (date.getUTCDay() % 6 !== 0) dates.push(date.toISOString().slice(0, 10));
   }
-  const scan = await scanGrouped({symbols, dates, recommendationSymbols: Promise.resolve(new Set(symbols.slice(1))),
+  const scan = await scanGrouped({symbols, dates, marketSymbols: ['MARKET', 'SMALL'],
+    getRecommendationCandidates: async () => ({major: new Set(symbols.slice(1)), all: new Set(['MARKET', 'GOODA'])}),
     recommendationMembership: new Map([['BAD', ['sp500']], ['INVALID', ['nasdaq']], ...symbols.slice(3).map(s => [s, ['nasdaq100','sp500']])]),
-    getDaily: async date => symbols.map((symbol, i) => {
+    getDaily: async date => [...symbols, 'MARKET', 'SMALL'].map((symbol, i) => {
       const close = 50 + dates.indexOf(date) * 0.3 + i * 0.01;
       return {symbol, close, open: close, high: close + 1, low: close - 1, volume: 1000};
     }),
   });
   assert.equal(scan.total, symbols.length);
-  const saved = compactScan(scan).preliminary.recommendations;
-  for (const [id, rows] of Object.entries(saved)) {
+  const saved = compactScan(scan).preliminary;
+  for (const [id, rows] of Object.entries(saved.recommendations)) {
     assert.equal(rows.length, 6);
     assert.ok(rows.every(row => row.symbol.startsWith('GOOD')));
     assert.ok(rows.every(row => row.indexes.length === 2 && row.conditions.length === row.total));
     assert.ok(rows.every((row, i) => !i || rows[i - 1].passed >= row.passed));
     assert.equal(rows[0].total, {'1000':7, trend:8, box:4, rsi2:2, breakout:2}[id]);
+    assert.deepEqual(saved.marketRecommendations[id].map(row => row.symbol).sort(), ['GOODA', 'MARKET']);
+    assert.deepEqual(saved.marketRecommendations[id].find(row => row.symbol === 'MARKET').indexes, []);
   }
 });
 
@@ -100,17 +106,22 @@ test('SEC requests require a declared app and operator contact before any networ
 
 test('Massive issuer identifiers use all pages and the SEC loader accepts the verified directory', async () => {
   const called = [];
-  const row = (ticker, cik) => ({ticker, cik, type: 'CS', market: 'stocks', locale: 'us', active: true});
+  const row = (ticker, cik) => ({ticker, cik, name: ticker + ' Inc.', primary_exchange: 'XNYS',
+    type: 'CS', market: 'stocks', locale: 'us', active: true});
   const client = makeMarketData({key: 'test-key', fetcher: async url => {
     called.push(url);
     return {ok: true, json: async () => called.length === 1
       ? {results: [row('AAA', '0000000001')], next_url: 'https://api.massive.com/v3/reference/tickers?cursor=second'}
-      : {results: [row('BBB', '0000000002')]}};
+      : {results: [row('BBB', '0000000002'), row('NEW'), {...row('OTC'), market: 'otc'}, {...row('ETF'), type: 'ETF'}]}};
   }});
   const directory = await client.stockDirectory(through);
   assert.equal(called[0].searchParams.get('date'), through);
   assert.equal(called.length, 2);
-  assert.deepEqual(directory, [{ticker: 'AAA', cik_str: 1}, {ticker: 'BBB', cik_str: 2}]);
+  assert.deepEqual(directory, [
+    {ticker: 'AAA', cik_str: 1, name: 'AAA Inc.', exchange: 'XNYS'},
+    {ticker: 'BBB', cik_str: 2, name: 'BBB Inc.', exchange: 'XNYS'},
+    {ticker: 'NEW', cik_str: null, name: 'NEW Inc.', exchange: 'XNYS'},
+  ]);
   const results = await loadSecFundamentals([{symbol: 'AAA', kind: 'stock'}], through, {
     userAgent: 'Stocking tests support@example.com', directory,
     fetcher: async url => {

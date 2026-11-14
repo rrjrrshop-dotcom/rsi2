@@ -4,6 +4,7 @@ test('each tab reports the applicable entry conditions with a consistent denomin
   for (const [id, total] of Object.entries({1000:7, trend:8, box:4, rsi2:2, breakout:2})) {
     const result = scoreStrategy(id,bars(),'AAA');
     assert.equal(result.total,total);
+    assert.equal(result.heading, id + ' score');
     assert.deepEqual(result,scoreStrategy(id,bars(),'AAA'));
   }
 });

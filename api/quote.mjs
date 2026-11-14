@@ -22,11 +22,19 @@ export default async function handler(req,res) {
  try {
   const symbol=String(req.query.symbol||'').trim().toUpperCase();
   if(!/^[A-Z0-9.\-]{1,15}$/.test(symbol))throw new DataError('올바른 티커를 입력하세요.',400);
-  const to=priorEasternDay(),d=new Date(`${to}T00:00:00Z`);d.setUTCDate(d.getUTCDate()-550);
+  const latest = priorEasternDay();
+  const pinned = req.query.through;
+  if (pinned !== undefined && (typeof pinned !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(pinned) ||
+      !Number.isFinite(Date.parse(pinned)) || new Date(pinned).toISOString().slice(0, 10) !== pinned || pinned > latest)) {
+    throw new DataError('확정 종가의 기준일을 확인하세요.', 400);
+  }
+  const to=pinned ?? latest,d=new Date(`${to}T00:00:00Z`);d.setUTCDate(d.getUTCDate()-550);
   const from=d.toISOString().slice(0,10);
   const bars=await makeMarketData({key:process.env.MASSIVE_API_KEY}).daily(symbol,from,to);
   if(!bars.length)throw new DataError('해당 기간에 확인된 종가가 없습니다.',404);
-  const through=bars.at(-1).date,ageDays=dataAgeDays(through,to);
+  const through=bars.at(-1).date;
+  if (pinned && through !== pinned) throw new DataError('추천 기준일의 확정 종가가 없습니다.', 404);
+  const ageDays=dataAgeDays(through,latest);
   return res.status(200).json({symbol,bars,source:'Massive',through,requestedThrough:to,ageDays,staleWarning:ageDays>7,adjustment:'split-adjusted'});
  }catch(e){return res.status(e instanceof DataError?e.status:500).json({error:e instanceof DataError?e.message:'조회 중 오류가 발생했습니다.'})}
 }

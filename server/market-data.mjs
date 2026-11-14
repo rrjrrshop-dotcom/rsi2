@@ -53,8 +53,9 @@ export function makeMarketData({key,fetcher=(url,options)=>fetch(url,{...options
     if (!Array.isArray(page.results)) throw new DataError('기업 식별자 목록을 확인할 수 없습니다.', 502);
     for (const row of page.results) {
      if (row.type === 'CS' && row.market === 'stocks' && row.locale === 'us' && row.active !== false &&
-         typeof row.ticker === 'string' && /^\d{1,10}$/.test(row.cik ?? '')) {
-      directory.push({ticker: row.ticker, cik_str: Number(row.cik)});
+         typeof row.ticker === 'string' && /^[A-Z0-9.\-]{1,15}$/.test(row.ticker)) {
+      directory.push({ticker: row.ticker, cik_str: /^\d{1,10}$/.test(row.cik ?? '') ? Number(row.cik) : null,
+       name: row.name ?? '', exchange: row.primary_exchange ?? null});
      }
     }
     if (!page.next_url) break;

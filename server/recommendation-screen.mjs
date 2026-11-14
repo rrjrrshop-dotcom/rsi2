@@ -23,7 +23,7 @@ function sharesAtClose(shares, splits, through) {
 }
 
 /** Set the cutoff before applying the financial screen, using all comparable stocks in the scan. */
-export function screenRecommendations(securities, fundamentals, closes, splits, through) {
+export function screenRecommendations(securities, fundamentals, closes, splits, through, excludedFraction = 0.30) {
   const stocks = securities.filter(security => security.kind === 'stock');
   const comparable = [];
   for (const {symbol} of stocks) {
@@ -34,7 +34,7 @@ export function screenRecommendations(securities, fundamentals, closes, splits, 
   }
 
   comparable.sort((a, b) => a.cap - b.cap);
-  const bottomCount = Math.ceil(comparable.length * 0.30);
+  const bottomCount = Math.ceil(comparable.length * excludedFraction);
   const cutoff = bottomCount ? comparable[bottomCount - 1].cap : null;
   const eligible = new Set();
   let excludedSmall = 0;

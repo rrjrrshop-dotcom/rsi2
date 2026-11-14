@@ -6,10 +6,13 @@ on:
     paths:
       - 'scripts/scan.mjs'
       - 'scripts/build-universe.mjs'
+      - 'server/grouped-scan.mjs'
       - 'server/index-constituents.mjs'
       - 'scores.mjs'
+      - 'breakout.mjs'
       - 'server/quotelinks-fundamentals.mjs'
       - 'server/recommendation-screen.mjs'
+      - 'recommendation-policy.mjs'
   schedule:
     # 11:00 UTC Tuesday–Saturday = previous US session Monday–Friday.
     - cron: '0 11 * * 2-6'
@@ -21,7 +24,7 @@ concurrency:
 jobs:
   scan:
     runs-on: ubuntu-latest
-    # Financial screening plus 350 free-plan price requests took 117 minutes.
+    # The 350 market-wide snapshots and SEC-based financial screen run concurrently.
     timeout-minutes: 180
     env:
       MASSIVE_API_KEY: ${{ secrets.MASSIVE_API_KEY }}
