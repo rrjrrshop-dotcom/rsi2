@@ -1,0 +1,35 @@
+name: Verify deployed breakout views
+on:
+  push:
+    branches: [verify-breakout-ui]
+permissions:
+  contents: read
+jobs:
+  mobile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Mobile recommendation and detail verification
+        run: |
+          gate="$RUNNER_TEMP/stocking-visual"
+          npm install --prefix "$gate" --no-audit --no-fund playwright@1.62.1
+          cp .github/breakout-ui-smoke.mjs "$gate/check.mjs"
+          node "$gate/check.mjs"
+      - name: Confirm deployed files match the tested source
+        run: |
+          node --input-type=module <<'JS'
+          import assert from 'node:assert/strict';
+          import {readFile} from 'node:fs/promises';
+          for (const path of ['index.html','breakout.mjs','breakout-ui.mjs','watchlist-ui.mjs','assets/scopes/major.webp','assets/scopes/all.webp']) {
+            const res=await fetch('https://rsi2.vercel.app/'+path,{signal:AbortSignal.timeout(12000),redirect:'error'});
+            assert.equal(res.status,200,path);
+            assert.ok((await readFile(path)).equals(Buffer.from(await res.arrayBuffer())),path);
+          }
+          console.log('Deployed files match the tested source');
+          JS
