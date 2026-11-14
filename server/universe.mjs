@@ -30,9 +30,9 @@ export function parseNasdaqDirectory(text){
 }
 /** Explicitly report whether index membership inputs were actually provided. */
 export function mergeUniverse({nasdaq=[],indexes={}}){
- const names=['dow','sp500'];const missing=names.filter(n=>!Array.isArray(indexes[n]));const unclassified=nasdaq.filter(x=>x.kind==='unclassified');const map=new Map();
+ const names=['dow','sp500','nasdaq100'];const missing=names.filter(n=>!Array.isArray(indexes[n]));const unclassified=nasdaq.filter(x=>x.kind==='unclassified');const map=new Map();
  for(const item of nasdaq){if(item.symbol&&item.kind!=='unclassified')map.set(item.symbol,{...item,sources:[item.source||'nasdaq']})}
- for(const name of names){for(const item of indexes[name]||[]){const symbol=String(item.symbol||'').trim().toUpperCase();if(!symbol)continue;let r=map.get(symbol);if(r){if(!r.sources.includes(name))r.sources.push(name)}else map.set(symbol,{...item,symbol,sources:[name]})}}
+ for(const name of names){for(const item of indexes[name]||[]){const symbol=String(item.symbol||'').trim().toUpperCase().replace(/^([A-Z]+)-([A-Z])$/,'$1.$2');if(!symbol)continue;let r=map.get(symbol);if(r){if(!r.sources.includes(name))r.sources.push(name)}else map.set(symbol,{...item,symbol,sources:[name]})}}
  return {securities:[...map.values()],missingSources:missing,excludedSources:['russell3000'],unclassified,complete:missing.length===0&&unclassified.length===0};
 }
 /** Download Nasdaq's own current symbol directory. Index constituents are separate. */

@@ -1,0 +1,31 @@
+name: Check mobile score cards
+on:
+  push:
+    branches: [index-recommendation-scorecards]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  mobile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 9
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Verify five tabs at mobile width
+        run: |
+          gate="$RUNNER_TEMP/stocking-visual"
+          npm install --prefix "$gate" --no-audit --no-fund playwright@1.62.1
+          cp .github/scorecards-smoke.mjs "$gate/scorecards.mjs"
+          node "$gate/scorecards.mjs"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mobile-score-card-check
+          path: |
+            /tmp/rsi2-score-card-check.png
+            /tmp/rsi2-trend-detail.png
+          retention-days: 1

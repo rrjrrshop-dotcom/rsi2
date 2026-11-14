@@ -1,4 +1,122 @@
-const config={'1000':{chart:'n1000Chart',result:'n1000Summary',status:'n1000Status'},trend:{chart:'trendChart',result:'trendResult',status:'trendStatus'},box:{chart:'boxChart',result:'boxResult',status:'boxStatus'},rsi2:{chart:'priceChart',result:'symbolForm',status:'lookupMessage'},breakout:{chart:'breakoutChart',result:'breakoutResult',status:'breakoutStatus'}};
-const $=x=>document.getElementById(x);
-function lines(ctx,text,width){let out=[],line='';for(const word of text.split(/\s+/)){const n=line?line+' '+word:word;if(ctx.measureText(n).width>width&&line){out.push(line);line=word}else line=n}if(line)out.push(line);return out}
-export async function saveReport(id,record){if(!record)throw Error('먼저 종목을 조회하세요.');if(!window.PDFLib)throw Error('PDF 기능을 불러오지 못했습니다.');const c=config[id],chart=$(c.chart),panel=id==='rsi2'?$(c.result).closest('section'):$(c.result);if(!chart||!chart.width||!chart.height)throw Error('차트를 먼저 불러오세요.');const page=document.createElement('canvas');page.width=1240;page.height=1754;const ctx=page.getContext('2d');ctx.fillStyle='white';ctx.fillRect(0,0,page.width,page.height);ctx.fillStyle='#162432';ctx.font='bold 40px sans-serif';ctx.fillText(`${record.symbol}  |  ${id}`,65,85);ctx.font='23px sans-serif';ctx.fillText(`기준일 ${record.date}  ·  임시 점수 ${record.score===null?'확인 불가':record.score+'/100'}`,65,130);ctx.fillStyle=record.color||'#888';ctx.fillRect(40,160,8,1400);ctx.fillStyle='#162432';ctx.font='bold 26px sans-serif';ctx.fillText('조건 및 분석 결과',65,195);ctx.font='20px sans-serif';let text=id==='rsi2'?[$('quickConditions').textContent,$('quickResult').textContent].join(' · '):[...panel.querySelectorAll('p,li')].filter(n=>!n.classList.contains('score-color-label')&&!n.classList.contains('strategy-advice')).map(n=>n.textContent).join(' · ');let y=230;for(const line of lines(ctx,text,1100).slice(0,10)){ctx.fillText(line,65,y);y+=27}y=Math.max(y+20,490);const h=Math.min(560,chart.height*1100/chart.width);ctx.fillStyle='#f7f8fa';ctx.fillRect(65,y,1100,h);ctx.drawImage(chart,65,y,1100,h);y+=h+45;ctx.fillStyle='#162432';ctx.font='bold 26px sans-serif';ctx.fillText('상황별 참고',65,y);y+=35;ctx.font='20px sans-serif';for(const line of lines(ctx,record.advice,1100).slice(0,8)){ctx.fillText(line,65,y);y+=27}ctx.fillStyle='#475569';ctx.font='18px sans-serif';ctx.fillText('확정 일봉 기준 · 임시 점수 · 신호와 손절가는 체결이나 수익을 보장하지 않습니다.',65,1680);const pdf=await PDFLib.PDFDocument.create(),p=pdf.addPage([595.28,841.89]),img=await pdf.embedJpg(page.toDataURL('image/jpeg',.92));p.drawImage(img,{x:0,y:0,width:595.28,height:841.89});const bytes=await pdf.save(),blob=new Blob([bytes],{type:'application/pdf'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=`${record.symbol}-${id}-${record.date}.pdf`;a.click();setTimeout(()=>URL.revokeObjectURL(url),60000)}
+import {scoreText} from './score-card.mjs';
+
+const charts = {1000: 'n1000Chart', trend: 'trendChart', box: 'boxChart', rsi2: 'priceChart', breakout: 'breakoutChart'};
+const conditionColors = {
+  pass: ['#d9f5ea', '#135e49', '충족'],
+  fail: ['#fce5e8', '#9e2f3a', '미충족'],
+  unknown: ['#e8eff0', '#506165', '미확인'],
+};
+
+function lines(ctx, text, width) {
+  const output = [];
+  let line = '';
+  for (const word of text.split(/\s+/)) {
+    const next = line ? line + ' ' + word : word;
+    if (ctx.measureText(next).width > width && line) { output.push(line); line = word; }
+    else line = next;
+  }
+  if (line) output.push(line);
+  return output;
+}
+
+function drawCondition(ctx, condition, y) {
+  const state = condition.passed === true ? 'pass' : condition.passed === false ? 'fail' : 'unknown';
+  const [fill, stroke, label] = conditionColors[state];
+  ctx.fillStyle = fill;
+  ctx.fillRect(65, y - 18, 23, 23);
+  ctx.strokeStyle = stroke;
+  ctx.lineWidth = 2.5;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  if (state === 'pass') {
+    ctx.moveTo(71, y - 7); ctx.lineTo(75, y - 3); ctx.lineTo(83, y - 11);
+  } else if (state === 'fail') {
+    ctx.moveTo(72, y - 11); ctx.lineTo(81, y - 2);
+    ctx.moveTo(81, y - 11); ctx.lineTo(72, y - 2);
+  } else {
+    ctx.moveTo(72, y - 7); ctx.lineTo(81, y - 7);
+  }
+  ctx.stroke();
+  ctx.font = '20px sans-serif';
+  ctx.fillStyle = '#162432';
+  ctx.fillText(condition.label, 101, y);
+  ctx.fillStyle = stroke;
+  ctx.fillText(label, 1082, y);
+  ctx.font = '17px sans-serif';
+  ctx.fillStyle = '#465b65';
+  ctx.fillText(condition.value, 101, y + 22);
+}
+
+export async function saveReport(id, record) {
+  if (!record?.score) throw Error('먼저 종목을 조회하세요.');
+  if (!window.PDFLib) throw Error('PDF 기능을 불러오지 못했습니다.');
+  const chart = document.getElementById(charts[id]);
+  if (!chart?.width || !chart.height) throw Error('차트를 먼저 불러오세요.');
+  if (id === 'rsi2' && document.getElementById('chartSymbol').value !== record.symbol) {
+    throw Error('PDF에는 점수와 같은 종목의 차트를 선택해 주세요.');
+  }
+  const page = document.createElement('canvas');
+  page.width = 1240;
+  page.height = 1754;
+  const ctx = page.getContext('2d');
+  ctx.fillStyle = 'white';
+  ctx.fillRect(0, 0, page.width, page.height);
+  ctx.fillStyle = '#162432';
+  ctx.font = 'bold 40px sans-serif';
+  ctx.fillText(record.symbol + '  |  ' + id, 65, 85);
+  ctx.font = '23px sans-serif';
+  ctx.fillText('기준일 ' + record.date + '  ·  ' + scoreText(record.score), 65, 130);
+  ctx.fillStyle = record.color;
+  ctx.fillRect(40, 160, 8, 1400);
+  ctx.fillStyle = '#162432';
+  ctx.font = 'bold 26px sans-serif';
+  ctx.fillText(record.score.heading, 65, 195);
+  let y = 236;
+  for (const condition of record.score.conditions) {
+    drawCondition(ctx, condition, y);
+    y += 55;
+  }
+  if (record.score.note) {
+    ctx.font = '19px sans-serif';
+    ctx.fillText(record.score.note, 65, y);
+    y += 36;
+  }
+  if (record.score.exitConditions?.length) {
+    ctx.fillStyle = '#162432';
+    ctx.font = 'bold 23px sans-serif';
+    ctx.fillText('보유 시 청산 조건', 65, y);
+    y += 38;
+    for (const condition of record.score.exitConditions) {
+      drawCondition(ctx, condition, y);
+      y += 55;
+    }
+  }
+  const height = Math.min(560, chart.height * 1100 / chart.width);
+  ctx.fillStyle = '#f7f8fa';
+  ctx.fillRect(65, y, 1100, height);
+  ctx.drawImage(chart, 65, y, 1100, height);
+  y += height + 43;
+  ctx.fillStyle = '#162432';
+  ctx.font = 'bold 25px sans-serif';
+  ctx.fillText('상황별 참고', 65, y);
+  y += 32;
+  ctx.font = '20px sans-serif';
+  for (const line of lines(ctx, record.advice, 1100).slice(0, Math.max(0, Math.floor((1635 - y) / 27)))) {
+    ctx.fillText(line, 65, y);
+    y += 27;
+  }
+  ctx.fillStyle = '#475569';
+  ctx.font = '18px sans-serif';
+  ctx.fillText('확정 일봉 기준 · 전략 조건 충족 수', 65, 1680);
+  const pdf = await window.PDFLib.PDFDocument.create();
+  const sheet = pdf.addPage([595.28,841.89]);
+  const img = await pdf.embedJpg(page.toDataURL('image/jpeg',.92));
+  sheet.drawImage(img, {x: 0, y: 0, width: 595.28, height: 841.89});
+  const bytes = await pdf.save();
+  const url = URL.createObjectURL(new Blob([bytes], {type: 'application/pdf'}));
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = record.symbol + '-' + id + '-' + record.date + '.pdf';
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
+}

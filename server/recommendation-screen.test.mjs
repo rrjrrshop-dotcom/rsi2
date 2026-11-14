@@ -5,6 +5,7 @@ import {screenRecommendations} from './recommendation-screen.mjs';
 import {scanGrouped} from './grouped-scan.mjs';
 import {compactScan} from './result-store.mjs';
 import {makeMarketData} from './market-data.mjs';
+import {RECOMMENDATION_SCREEN_VERSION} from '../recommendation-policy.mjs';
 
 const through = '2026-11-12';
 const fact = (val, overrides = {}) => ({val, end: '2026-09-30', filed: '2026-10-29', accn: 'report', form: '10-Q', ...overrides});
@@ -54,27 +55,31 @@ test('filter adjusts shares for splits, removes bottom 30% with ties, and exclud
   const splits = new Map([['ST9', [{date: '2026-11-01', from: 1, to: 2}]]]);
   const {eligible, summary} = screenRecommendations(securities, facts, closes, splits, through);
   assert.deepEqual([...eligible], ['ST7', 'ST8', 'ST9']);
-  assert.deepEqual(summary, {version: 1, status: 'applied', through, stocks: 11, comparable: 10, excludedSmall: 4, excludedFinancials: 3, eligible: 3});
+  assert.deepEqual(summary, {version: RECOMMENDATION_SCREEN_VERSION, status: 'applied', through, stocks: 11, comparable: 10, excludedSmall: 4, excludedFinancials: 3, eligible: 3});
 });
 
-test('production scan ranks only eligible stocks and persists six recommendations for each strategy', async () => {
-  const symbols = ['BAD', 'GOODA', 'GOODB', 'GOODC', 'GOODD', 'GOODE', 'GOODF', 'GOODG'];
+test('recommendations require both verified index membership and eligibility, and retain the scored conditions', async () => {
+  const symbols = ['BAD', 'NONMEMBER', 'INVALID', 'GOODA', 'GOODB', 'GOODC', 'GOODD', 'GOODE', 'GOODF', 'GOODG'];
   const dates = [];
   for (let day = 0; dates.length < 260; day++) {
     const date = new Date(Date.UTC(2025, 0, day + 1));
     if (date.getUTCDay() % 6 !== 0) dates.push(date.toISOString().slice(0, 10));
   }
   const scan = await scanGrouped({symbols, dates, recommendationSymbols: Promise.resolve(new Set(symbols.slice(1))),
+    recommendationMembership: new Map([['BAD', ['sp500']], ['INVALID', ['nasdaq']], ...symbols.slice(3).map(s => [s, ['nasdaq100','sp500']])]),
     getDaily: async date => symbols.map((symbol, i) => {
       const close = 50 + dates.indexOf(date) * 0.3 + i * 0.01;
       return {symbol, close, open: close, high: close + 1, low: close - 1, volume: 1000};
     }),
   });
-  assert.equal(scan.total, 8);
-  for (const rows of Object.values(compactScan(scan).preliminary.recommendations)) {
+  assert.equal(scan.total, symbols.length);
+  const saved = compactScan(scan).preliminary.recommendations;
+  for (const [id, rows] of Object.entries(saved)) {
     assert.equal(rows.length, 6);
     assert.ok(rows.every(row => row.symbol.startsWith('GOOD')));
-    assert.ok(rows.every((row, i) => !i || rows[i - 1].score >= row.score));
+    assert.ok(rows.every(row => row.indexes.length === 2 && row.conditions.length === row.total));
+    assert.ok(rows.every((row, i) => !i || rows[i - 1].passed >= row.passed));
+    assert.equal(rows[0].total, {'1000':7, trend:8, box:4, rsi2:2, breakout:2}[id]);
   }
 });
 
