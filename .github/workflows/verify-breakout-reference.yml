@@ -1,0 +1,65 @@
+name: Compare breakout inputs on the uploaded dates
+on:
+  push:
+    branches: [verify-breakout-reference]
+    paths: ['.github/workflows/verify-breakout-reference.yml']
+permissions:
+  contents: read
+jobs:
+  compare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Compare same-date channel and ATR calculations
+        env:
+          MASSIVE_API_KEY: ${{ secrets.MASSIVE_API_KEY }}
+        run: |
+          node --input-type=module <<'JS'
+          import {makeMarketData} from './server/market-data.mjs';
+          import {rateLimit} from './server/batch-scan.mjs';
+          import {analyzeBreakout} from './breakout.mjs';
+          const fetcher = rateLimit((url, options) => fetch(url, {...options, signal: AbortSignal.timeout(12000)}), {intervalMs: 13000});
+          const client = makeMarketData({key:process.env.MASSIVE_API_KEY, fetcher, maxRetries:1});
+          const references = {
+            AENT:{close:4.94,atr:.35,high20:5.33,high55:7.62,low10:4.20,low20:4.20,state:'wait',stop:4.63,unit:2858},
+            KINS:{close:22.63,atr:.75,high20:23.42,high55:23.42,low10:18.74,low20:18.51,state:'wait',stop:21.91,unit:1327},
+            PGNY:{close:36.18,atr:1.10,high20:37.15,high55:37.15,low10:28.30,low20:26.74,state:'wait',stop:34.95,unit:906},
+            XERS:{close:16.66,atr:.69,high20:16.88,high55:16.88,low10:10.08,low20:9.84,state:'wait',stop:15.49,unit:1441},
+            ENGN:{close:2.41,atr:.14,high20:2.35,high55:2.35,low10:1.45,low20:1.45,state:'both',stop:2.13,unit:7271},
+            COST:{close:1106.21,atr:18.93,high20:1102.84,high55:1102.84,low10:1006.56,low20:978.87,state:'both',stop:1068.35,unit:52},
+          };
+          const from = '2025-05-12', through = '2026-11-13';
+          const grouped = await client.dailyMarket(through);
+          const bySymbol = new Map(grouped.map(x => [x.symbol,x]));
+          for (const [symbol, reference] of Object.entries(references)) {
+            const bars = await client.daily(symbol,from,through);
+            if (bars.at(-1)?.date !== through) throw Error('Missing requested close for ' + symbol);
+            const last = bars.at(-1);
+            const pick = ({date,close,high20,high55,low10,low20,atr,unit,stop,state}) => ({date,close,high20,high55,low10,low20,atr,unit,stop,state});
+            const previous = pick(analyzeBreakout(bars.slice(0,-1), {includeLines:false,riskPercent:2}));
+            const current = pick(analyzeBreakout(bars, {includeLines:false,riskPercent:2}));
+            const previousBars = bars.slice(0,-1);
+            const trueRanges = bars.map((b,i) => i ? Math.max(b.high-b.low,Math.abs(b.high-bars[i-1].close),Math.abs(b.low-bars[i-1].close)) : b.high-b.low);
+            const seed = trueRanges.slice(0,20).reduce((a,b)=>a+b,0)/20;
+            const sma20 = trueRanges.slice(-20).reduce((a,b)=>a+b,0)/20;
+            const ema20 = trueRanges.slice(20).reduce((p,b)=>p+(b-p)*2/21,seed);
+            const round = num => Math.round(num*100)/100;
+            const state = (price,high20,high55)=>price>high55?'both':price>high20?'s1':price<current.low20?'down':'wait';
+            const alternatives = {
+              strict: current.state,
+              equalPass: last.close>=current.high55?'both':last.close>=current.high20?'s1':current.state,
+              roundedStrict: state(round(last.close),round(current.high20),round(current.high55)),
+              intradayHigh: state(last.high,current.high20,current.high55),
+              priorClose: state(last.close,...[20,55].map(n=>Math.max(...previousBars.slice(-n).map(b=>b.close)))),
+              atrBuffer: state(last.close,current.high20+current.atr*.25,current.high55+current.atr*.25),
+            };
+            const position = atr => {
+              const entry = current.state==='both'||current.state==='s1'?current.close:current.high20;
+              return {atr, unit:Math.floor(1000/atr),stop:entry-2*atr};
+            };
+            console.log('BREAKOUT_SAMPLE ' + JSON.stringify({symbol,reference,previous,current,alternatives,groupedClose:bySymbol.get(symbol)?.close,individualHigh:last.high,atr:{wilder:position(current.atr),sma:position(sma20),ema:position(ema20)}}));
+          }
+          JS
