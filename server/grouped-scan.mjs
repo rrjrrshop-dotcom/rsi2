@@ -3,13 +3,13 @@ import {analyze1000} from '../strategy1000.mjs';
 import {analyzeTrend} from '../trend.mjs';
 import {analyzeBox} from '../box.mjs';
 import {analyzeBreakout} from '../breakout.mjs';
-import {scoreStrategy} from '../scores.mjs';
-import {RECOMMENDATION_LIMIT} from '../recommendation-policy.mjs';
+import {compareScores, scoreAnalysis, scoreStrategy} from '../scores.mjs';
+import {RECOMMENDATION_INDEXES, RECOMMENDATION_LIMIT} from '../recommendation-policy.mjs';
 /** Build chronological daily histories from market-wide snapshots.
  * Callers provide independently verified symbols and ordered trading dates.
  * A failed date aborts, rather than silently omitting a market session.
  */
-export async function scanGrouped({symbols,dates,getDaily,onProgress=()=>{},recommendationSymbols=new Set()}){
+export async function scanGrouped({symbols,dates,getDaily,onProgress=()=>{},recommendationSymbols=new Set(),recommendationMembership=new Map()}){
  if(!Array.isArray(symbols)||!symbols.length||!Array.isArray(dates)||!dates.length||typeof getDaily!=='function')throw Error('symbols, dates and getDaily required');
  const universe=[...new Set(symbols.map(s=>String(s).trim().toUpperCase()))];
  if(universe.some(s=>!/^[A-Z0-9.\-]{1,15}$/.test(s)))throw Error('invalid symbol');
@@ -23,14 +23,27 @@ export async function scanGrouped({symbols,dates,getDaily,onProgress=()=>{},reco
  const eligible = await recommendationSymbols;
  const expectedDate=dates.at(-1),records=[],preliminary={trend:[],box:[],thousand:[],breakout:[],recommendations:{'1000':[],trend:[],box:[],rsi2:[],breakout:[]},skipped:0};
  for(const [symbol,bars] of history){let r=analyze(bars);if(r.date!==expectedDate)r={status:'stale',date:r.date,expectedDate};records.push({symbol,...r});
-  if(eligible.has(symbol)&&bars.at(-1)?.date===expectedDate){for(const id of Object.keys(preliminary.recommendations)){try{const score=scoreStrategy(id,bars,symbol);const dailyFrame=id==='1000'?{date:expectedDate,trend:analyze1000(bars).trend}:undefined;preliminary.recommendations[id].push({symbol,...score,date:expectedDate,...(dailyFrame?{dailyFrame}:{})})}catch{}}}
+  const indexes = recommendationMembership.get(symbol);
+  if (eligible.has(symbol) && Array.isArray(indexes) && indexes.length &&
+      indexes.every(index => Object.hasOwn(RECOMMENDATION_INDEXES, index)) && bars.at(-1)?.date === expectedDate) {
+   for (const [id, rows] of Object.entries(preliminary.recommendations)) {
+    try {
+     const daily = id === '1000' ? analyze1000(bars) : null;
+     const score = daily ? scoreAnalysis(id, daily) : id === 'rsi2' ? scoreAnalysis(id, r) : scoreStrategy(id, bars, symbol);
+     rows.push({symbol,...score,indexes,date:expectedDate,...(daily ? {dailyFrame:{date:expectedDate,trend:daily.trend}} : {})});
+    } catch { /* History may be insufficient for this strategy. */ }
+   }
+  }
   if(bars.at(-1)?.date!==expectedDate||bars.length<252){preliminary.skipped++;continue}
   try{const t=analyzeTrend(bars);preliminary.trend.push({symbol,score:t.passed,known:7,total:8,close:t.close,date:t.date});}catch{preliminary.skipped++;continue}
   try{const t=analyze1000(bars);preliminary.thousand.push({symbol,above:t.above,close:t.close,date:t.date});}catch{}
   try{const b=analyzeBreakout(bars,{includeLines:false});if(b.state==='both'||b.state==='s1')preliminary.breakout.push({symbol,state:b.state,close:b.close,high20:b.high20,atr:b.atr,date:b.date});}catch{}
   try{const b=analyzeBox(bars);if(b.upper!==null&&b.volumeRatio!==null)preliminary.box.push({symbol,close:b.close,upper:b.upper,lower:b.lower,volumeRatio:b.volumeRatio,aboveSma:b.close>b.sma30,date:b.date});}catch{}
  }
- for(const rows of Object.values(preliminary.recommendations)){rows.sort((a,b)=>b.score-a.score||a.symbol.localeCompare(b.symbol));rows.splice(RECOMMENDATION_LIMIT)}
+ for (const rows of Object.values(preliminary.recommendations)) {
+  rows.sort(compareScores);
+  rows.splice(RECOMMENDATION_LIMIT);
+ }
  preliminary.breakout.sort((a,b)=>Number(b.state==='both')-Number(a.state==='both')||(a.close-a.high20)/a.atr-(b.close-b.high20)/b.atr||a.symbol.localeCompare(b.symbol));
  preliminary.trend.sort((a,b)=>b.score-a.score||a.symbol.localeCompare(b.symbol));
  preliminary.thousand.sort((a,b)=>b.above-a.above||a.symbol.localeCompare(b.symbol));

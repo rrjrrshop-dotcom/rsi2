@@ -4,6 +4,8 @@ import {makeMarketData} from '../server/market-data.mjs';import {intradayContext
 import {daysBefore, MAX_FUNDAMENTALS_AGE_DAYS} from '../server/sec-fundamentals.mjs';
 import {loadQuotelinksFundamentals} from '../server/quotelinks-fundamentals.mjs';
 import {screenRecommendations} from '../server/recommendation-screen.mjs';
+import {indexRecommendationUniverse} from '../server/index-constituents.mjs';
+import {hasCurrentRecommendationScreen, RECOMMENDATION_SCOPE} from '../recommendation-policy.mjs';
 
 async function prepareRecommendations(client, securities, through) {
   const directory = await client.stockDirectory(through);
@@ -39,9 +41,12 @@ async function main(){
  const getDaily=withSnapshotCache(snapshotStore(cachePath),fetchDaily);
  if (!Array.isArray(dates) || !dates.length) throw Error('확정 거래일이 없습니다.');
  // Verify financial data before spending the free-plan quota on historical prices.
- const screen = await prepareRecommendations(client,universe.securities,dates.at(-1));
- const result=await scanGrouped({symbols,dates,getDaily,recommendationSymbols:screen.eligible,onProgress:p=>console.error(`${p.completed}/${p.total} ${p.date}`)});
- result.preliminary.recommendationScreen=screen.summary;
+ const indexed = indexRecommendationUniverse(universe.securities);
+ const screen = await prepareRecommendations(client,indexed.securities,dates.at(-1));
+ const membership = new Map(indexed.securities.filter(security => screen.eligible.has(security.symbol))
+   .map(security => [security.symbol, security.indexes]));
+ const result=await scanGrouped({symbols,dates,getDaily,recommendationSymbols:screen.eligible,recommendationMembership:membership,onProgress:p=>console.error(`${p.completed}/${p.total} ${p.date}`)});
+ result.preliminary.recommendationScreen={...screen.summary,scope:RECOMMENDATION_SCOPE,indexCounts:indexed.counts,indexSymbols:indexed.securities.length,indexSources:universe.indexSources};
  console.log('Recommendation counts:',JSON.stringify(Object.fromEntries(Object.entries(result.preliminary.recommendations).map(([tab,rows])=>[tab,rows.length]))));
  // Only the displayed 1000 candidates receive a 15-minute comparison;
  // all other securities retain the daily-only ranking. Failures remain explicit.
@@ -52,7 +57,15 @@ async function main(){
   delete candidate.dailyFrame;
  }
  const finalResult={...attachSecurityMetadata(result,universe.securities),createdAt:new Date().toISOString()};const tmp=`${outputPath}.${process.pid}.tmp`;await writeFile(tmp,JSON.stringify(finalResult,null,2));const {rename}=await import('node:fs/promises');await rename(tmp,outputPath);
- if(process.env.UPSTASH_REDIS_REST_URL&&process.env.UPSTASH_REDIS_REST_TOKEN)await resultStore({url:process.env.UPSTASH_REDIS_REST_URL,token:process.env.UPSTASH_REDIS_REST_TOKEN}).save(finalResult);
+ if (process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN) {
+  const store = resultStore({url:process.env.UPSTASH_REDIS_REST_URL,token:process.env.UPSTASH_REDIS_REST_TOKEN});
+  await store.save(finalResult);
+  const saved = await store.load();
+  if (saved?.createdAt !== finalResult.createdAt || !hasCurrentRecommendationScreen(saved)) {
+   throw Error('저장된 추천 결과의 지수 범위와 기준일을 확인할 수 없습니다.');
+  }
+  console.log('Saved recommendation counts:', JSON.stringify(Object.fromEntries(Object.entries(saved.preliminary.recommendations).map(([tab,rows])=>[tab,rows.length]))));
+ }
  console.log(`Complete: ${result.total} symbols, ${result.buy.length} buy, ${result.stale.length} stale`);
 }
 main().catch(e=>{console.error(e.message);process.exitCode=1});
