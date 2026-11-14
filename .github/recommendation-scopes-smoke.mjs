@@ -11,7 +11,7 @@ const {RECOMMENDATION_SCOPES, RECOMMENDATION_SCREEN_VERSION} = await import(path
 const mime = {'.html':'text/html','.js':'text/javascript','.mjs':'text/javascript','.css':'text/css','.webp':'image/webp','.webmanifest':'application/manifest+json'};
 const bars = [];
 for (let offset = 0; bars.length < 350; offset++) {
- const date = new Date(Date.UTC(2025, 6, 14 + offset));
+ const date = new Date(Date.UTC(2025, 6, 11 + offset));
  if ([0, 6].includes(date.getUTCDay())) continue;
  const close = 100 + 0.06 * bars.length;
  bars.push({date: date.toISOString().slice(0, 10), open: close - .2, high: close + .7, low: close - .7, close, volume: 1000000});
