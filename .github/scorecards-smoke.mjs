@@ -72,7 +72,7 @@ try {
    assert.equal(await detail.locator('.score-fraction').innerText(),'6/8점');
    assert.equal(await detail.locator('svg.fail').count(),1);
    assert.equal(await detail.locator('svg.unknown').count(),1);
-   await page.screenshot({path:'/tmp/rsi2-trend-detail.png'});
+   await detail.screenshot({path:'/tmp/rsi2-trend-detail.png'});
    const [download]=await Promise.all([page.waitForEvent('download'),panel.locator('#pdf-trend').click()]);
    assert.equal(download.suggestedFilename(),'TEST-trend-'+through+'.pdf');
   }

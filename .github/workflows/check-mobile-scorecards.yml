@@ -16,12 +16,32 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
+      - name: Install Korean font for the screenshots
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends fonts-noto-cjk
       - name: Verify five tabs at mobile width
         run: |
           gate="$RUNNER_TEMP/stocking-visual"
           npm install --prefix "$gate" --no-audit --no-fund playwright@1.62.1
           cp .github/scorecards-smoke.mjs "$gate/scorecards.mjs"
           node "$gate/scorecards.mjs"
+      - name: Check public production assets
+        run: |
+          node --input-type=module <<'JS'
+          import assert from 'node:assert/strict';
+          import {readFile} from 'node:fs/promises';
+          const origin = 'https://rsi2.vercel.app';
+          for (const path of ['score-card.css','score-card.mjs','recommendation-policy.mjs']) {
+            const expected = await readFile(path,'utf8');
+            const response = await fetch(origin + '/' + path, {signal:AbortSignal.timeout(12000),redirect:'error'});
+            assert.equal(response.status,200);
+            assert.equal(await response.text() === expected,true, path + ' differs from deployed asset');
+          }
+          const results = await fetch(origin + '/api/results',{signal:AbortSignal.timeout(12000),redirect:'error'});
+          assert.equal(results.status,401);
+          console.log('Public production assets match the release; saved recommendations require the personal code.');
+          JS
       - uses: actions/upload-artifact@v4
         with:
           name: mobile-score-card-check
