@@ -1,0 +1,95 @@
+name: Verify breakout dividend adjustments
+on:
+  push:
+    branches: [verify-breakout-dividends]
+permissions:
+  contents: read
+jobs:
+  compare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Compare historical price bases and ATR seeds
+        env:
+          MASSIVE_API_KEY: ${{ secrets.MASSIVE_API_KEY }}
+        run: |
+          node --input-type=module <<'JS'
+          import assert from 'node:assert/strict';
+          import {analyzeBreakout} from './breakout.mjs';
+          import {rateLimit} from './server/batch-scan.mjs';
+          import {makeMarketData} from './server/market-data.mjs';
+          const fetcher = rateLimit((url, options) => fetch(url, {...options, signal: AbortSignal.timeout(12000)}), {intervalMs:13000});
+          const client = makeMarketData({key:process.env.MASSIVE_API_KEY,fetcher,maxRetries:2});
+          const references = {
+           AENT:[{date:'2026-11-13',close:4.94,low10:4.20,low20:4.20,high20:5.33,high55:7.62,atr:.35,unit:2858,stop:4.63,state:'wait'}],
+           KINS:[{date:'2026-11-13',close:22.63,low10:18.74,low20:18.51,high20:23.42,high55:23.42,atr:.75,unit:1327,stop:21.91,state:'wait'}],
+           PGNY:[{date:'2026-11-13',close:36.18,low10:28.30,low20:26.74,high20:37.15,high55:37.15,atr:1.10,unit:906,stop:34.95,state:'wait'}],
+           XERS:[{date:'2026-11-13',close:16.66,low10:10.08,low20:9.84,high20:16.88,high55:16.88,atr:.69,unit:1441,stop:15.49,state:'wait'}],
+           ENGN:[{date:'2026-11-13',close:2.41,low10:1.45,low20:1.45,high20:2.35,high55:2.35,atr:.14,unit:7271,stop:2.13,state:'both'}],
+           COST:[{date:'2026-11-13',close:1106.21,low10:1006.56,low20:978.87,high20:1102.84,high55:1102.84,atr:18.93,unit:52,stop:1068.35,state:'both'}],
+           NVDA:[{date:'2026-11-10',entry:228.64,atr:8.02,unit:124,stop:212.60},{date:'2026-11-11',entry:226,atr:8.05,unit:124,stop:209.89}],
+           MU:[{date:'2026-11-11',entry:990,atr:58.23,unit:17,stop:873.54}],
+          };
+          const through='2026-11-13',from='2025-05-12';
+          const bySymbol = new Map(Object.keys(references).map(symbol=>[symbol,[]]));
+          const url = new URL('https://api.massive.com/stocks/v1/dividends');
+          url.search = new URLSearchParams({'ex_dividend_date.gt':from,'ex_dividend_date.lte':through,limit:'5000',sort:'ex_dividend_date.asc'});
+          const dividendPages = new Set();
+          let page = url;
+          while (page) {
+           assert.equal(page.origin,url.origin);
+           assert.equal(page.pathname,url.pathname);
+           assert.ok(!dividendPages.has(page.href));
+           dividendPages.add(page.href);
+           page.searchParams.set('apiKey',process.env.MASSIVE_API_KEY);
+           const response = await fetcher(page);
+           assert.equal(response.status,200,'dividend endpoint returned '+response.status);
+           const data = await response.json();
+           assert.ok(Array.isArray(data.results));
+           for (const item of data.results) bySymbol.get(item.ticker)?.push(item);
+           page=data.next_url?new URL(data.next_url):null;
+          }
+          console.log('DIVIDEND_PAGES '+dividendPages.size);
+          const risk = {riskPercent:2,includeLines:false};
+          const pick = ({entry,close,high20,high55,low10,low20,atr,unit,stop,state}) => ({entry,close,high20,high55,low10,low20,atr,unit,stop,state});
+          const prices = (bar,factor) => ({...bar,open:bar.open*factor,high:bar.high*factor,low:bar.low*factor,close:bar.close*factor});
+          const seedAtrs = bars => Object.fromEntries([55,56,60,70,75,80,90,100,125,150,200,250,350].filter(n=>n<=bars.length).map(n=>{
+           const a=analyzeBreakout(bars.slice(-Math.max(n,56)),risk);
+           return [n,a.atr];
+          }));
+          for(const [symbol,cases] of Object.entries(references)){
+           let history=await client.daily(symbol,from,through);
+           const events=bySymbol.get(symbol).filter(d=>d.currency==='USD');
+           for(const ref of cases){
+            const bars=history.filter(b=>b.date<=ref.date);
+            assert.equal(bars.at(-1)?.date,ref.date);
+            const applied=[];
+            const dividendAdjusted=bars.map(b=>({...b}));
+            for (const event of events.sort((a,b)=>a.ex_dividend_date.localeCompare(b.ex_dividend_date))) {
+             const date=event.ex_dividend_date;
+             if(date>ref.date)continue;
+             const i=bars.findIndex(row=>row.date>=date);
+             if(i<=0)continue;
+             const amount=event.split_adjusted_cash_amount,previousClose=bars[i-1].close;
+             const one=1-amount/previousClose;
+             assert.ok(Number.isFinite(one)&&one>0&&one<=1);
+             for(let j=0;j<i;j++)dividendAdjusted[j]=prices(dividendAdjusted[j],one);
+             applied.push({date,amount,one,cumulative:event.historical_adjustment_factor,previousDate:bars[i-1].date,distribution:event.distribution_type});
+            }
+            const last20 = bars.slice(-21,-1);
+            const lowDate = last20.reduce((prev,bar)=>!prev||bar.low<prev.low?bar:prev,null).date;
+            const raw = pick(analyzeBreakout(bars,risk));
+            const adjusted=pick(analyzeBreakout(dividendAdjusted,risk));
+            const tr = dividendAdjusted.map((b,i) => i ? Math.max(b.high-b.low,Math.abs(b.high-dividendAdjusted[i-1].close),Math.abs(b.low-dividendAdjusted[i-1].close)) : b.high-b.low);
+            const firstSeed = tr.slice(1).reduce((v,x)=>(v*19+x)/20,tr[0]);
+            const noLastBar = tr.slice(20,-1).reduce((v,x)=>(v*19+x)/20,tr.slice(0,20).reduce((a,b)=>a+b,0)/20);
+            const nonUsd = events.length !== bySymbol.get(symbol).length;
+            const comparison = {symbol,ref,raw,adjusted,lowDate,dividends:applied.slice(-4),nonUsd,
+             seedAtrs:seedAtrs(dividendAdjusted),firstSeed,noLastBar};
+            console.log('DIVIDEND_COMPARISON ' + JSON.stringify(comparison));
+           }
+          }
+          JS
