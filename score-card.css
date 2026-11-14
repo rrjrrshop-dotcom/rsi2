@@ -61,6 +61,7 @@
 .panel .score-card-note { margin: 7px 0 0; color: #466066; }
 
 .recommend-items.top-results { grid-template-columns: repeat(auto-fit, minmax(min(100%, 245px), 1fr)); align-items: start; }
+.recommend-panel .recommend-scope { color: #375b51; }
 .recommend-item { min-width: 0; padding: 8px; background: #f9fffc; border: 1px solid #b7dbce; border-radius: 10px; }
 .recommend-items .recommend-open { width: 100%; padding: 6px; border: 0; }
 .recommend-open strong { overflow-wrap: anywhere; }
