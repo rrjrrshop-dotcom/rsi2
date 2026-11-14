@@ -1,0 +1,72 @@
+name: Verify breakout quote and dividend inputs
+on:
+  push:
+    branches: [verify-breakout-release]
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Verify local and live quote paths
+        env:
+          MASSIVE_API_KEY: ${{ secrets.MASSIVE_API_KEY }}
+        run: |
+          npm test
+          node --input-type=module <<'JS'
+          import assert from 'node:assert/strict';
+          import {adjustBreakoutBars,analyzeBreakout,BREAKOUT_ADJUSTMENT} from './breakout.mjs';
+          import quote from './api/quote.mjs';
+          import {makeMarketData} from './server/market-data.mjs';
+          import {rateLimit} from './server/batch-scan.mjs';
+          const fetcher = rateLimit((url, options)=>fetch(url,{...options,signal:AbortSignal.timeout(12000)}),{intervalMs:13000});
+          const market = makeMarketData({key:process.env.MASSIVE_API_KEY,fetcher,maxRetries:2});
+          const date='2026-11-13';
+          const divs=await market.dividends('2026-09-25',date);
+          assert.equal(divs.get('COST').some(d=>d.date==='2026-10-30'&&d.amount===1.47),true);
+          assert.equal(divs.get('KINS').some(d=>d.date==='2026-11-10'&&d.amount===.06),true);
+          assert.equal(divs.get('COST').some(d=>d.date>date),false);
+          console.log('DIVIDEND_PROVIDER_AVAILABLE: corporate-action dates and amounts validated');
+          async function check(lookup, symbol, expected){
+           const data=await lookup(symbol);
+           assert.equal(data.through,date);
+           assert.equal(data.adjustment,BREAKOUT_ADJUSTMENT);
+           const result=analyzeBreakout(data.bars,{allocation:100000,riskPercent:2,includeLines:false});
+           const cents=n=>+n.toFixed(2);
+           const actual=[cents(result.low10),cents(result.low20),cents(result.stop),result.unit,result.state];
+           assert.deepEqual(actual,expected,symbol);
+          }
+          const siriBars=await market.daily('SIRI','2025-05-12','2026-11-06');
+          const siriDividends=await market.dividends(siriBars[0].date,'2026-11-06',{symbol:'SIRI'});
+          console.log('SIRI_MASSIVE_EX_DATE '+JSON.stringify(siriDividends.get('SIRI').at(-1)));
+          const siri=analyzeBreakout(adjustBreakoutBars(siriBars,siriDividends.get('SIRI')),{riskPercent:2,includeLines:false});
+          console.log('SIRI_PRIOR_DIVIDENDS '+JSON.stringify({close:siri.close,high20:siri.high20,high55:siri.high55,low10:siri.low10,low20:siri.low20,atr:siri.atr,stop:siri.stop,unit:siri.unit,state:siri.state}));
+          await new Promise(r=>setTimeout(r,13000));
+          process.env.PAIRING_SECRET = 'local-test-only';
+          const lookup=async symbol => {
+           const response={
+            statusCode:0,
+            setHeader(){},
+            status(code){this.statusCode=code;return this;},
+            json(body){assert.equal(this.statusCode,200,body.error);return body;}
+           };
+           return quote({method:'GET',query:{symbol,through:date,strategy:'breakout'},
+            headers:{authorization:'Bearer '+process.env.PAIRING_SECRET}},response);
+          };
+          await check(lookup,'KINS',[18.74,18.51,21.91,1327,'wait']);
+          await new Promise(r=>setTimeout(r,13000));
+          await check(lookup,'COST',[1006.56,978.87,1068.35,52,'both']);
+          await new Promise(r=>setTimeout(r,13000));
+          await check(lookup,'AENT',[4.20,4.20,4.63,2858,'wait']);
+          const origin='https://rsi2.vercel.app';
+          const unauthorized=await fetch(origin+'/api/quote?symbol=KINS&strategy=breakout');
+          assert.equal(unauthorized.status,401);
+          console.log('Private quote authorization and live comparison passed.');
+          JS
