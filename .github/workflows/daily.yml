@@ -4,7 +4,6 @@ on:
   push:
     branches: [main]
     paths:
-      - '.github/workflows/daily.yml'
       - 'scripts/scan.mjs'
       - 'server/quotelinks-fundamentals.mjs'
       - 'server/recommendation-screen.mjs'
@@ -19,7 +18,8 @@ concurrency:
 jobs:
   scan:
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    # Financial screening plus 350 free-plan price requests took 117 minutes.
+    timeout-minutes: 180
     env:
       MASSIVE_API_KEY: ${{ secrets.MASSIVE_API_KEY }}
       UPSTASH_REDIS_REST_URL: ${{ secrets.UPSTASH_REDIS_REST_URL }}
