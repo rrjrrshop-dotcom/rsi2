@@ -1,4 +1,4 @@
-import {analyzeBreakout} from './breakout.mjs';
+import {analyzeBreakout, BREAKOUT_ADJUSTMENT} from './breakout.mjs';
 import {describeVolumeProfile} from './volume-profile.mjs';
 const $=id=>document.getElementById(id),f=n=>Number.isFinite(n)?n.toFixed(2):'—',money=n=>'$'+Math.round(n).toLocaleString('en-US');
 function draw(r){const c=$('breakoutChart'),ctx=c.getContext('2d'),start=Math.max(0,r.bars.length-110),view=r.bars.slice(start),lines=r.lines.slice(start),values=view.flatMap((b,j)=>[b.low,b.high,...Object.values(lines[j]||{})]);let min=Math.min(...values),max=Math.max(...values),pad=(max-min)*.05||1;min-=pad;max+=pad;const x=j=>55+j*875/Math.max(view.length-1,1),y=v=>300-(v-min)/(max-min)*275;ctx.clearRect(0,0,960,450);ctx.fillStyle='#fafafa';ctx.fillRect(0,0,960,450);ctx.fillStyle='#555';ctx.font='11px sans-serif';ctx.fillText(f(max),3,25);ctx.fillText(f(min),3,300);view.forEach((b,j)=>{ctx.strokeStyle=b.close>=b.open?'#46b885':'#ef6868';ctx.fillStyle=ctx.strokeStyle;ctx.beginPath();ctx.moveTo(x(j),y(b.high));ctx.lineTo(x(j),y(b.low));ctx.stroke();ctx.fillRect(x(j)-2,Math.min(y(b.open),y(b.close)),4,Math.max(1,Math.abs(y(b.open)-y(b.close))))});for(const [key,color,dash] of [['high20','#329755',[]],['high55','#329755',[5,4]],['low10','#d45555',[]],['low20','#d45555',[5,4]]]){ctx.strokeStyle=color;ctx.setLineDash(dash);ctx.beginPath();let begun=false;lines.forEach((v,j)=>{if(!v)return;if(!begun){ctx.moveTo(x(j),y(v[key]));begun=true}else ctx.lineTo(x(j),y(v[key]))});ctx.stroke();ctx.setLineDash([])}const vmax=Math.max(1,...view.map(b=>Number.isFinite(b.volume)?b.volume:0));view.forEach((b,j)=>{ctx.fillStyle=b.close>=b.open?'#46b885':'#ef6868';const h=(b.volume||0)/vmax*85;ctx.fillRect(x(j)-2,415-h,4,h)});ctx.fillStyle='#555';for(let j=0;j<view.length;j+=Math.max(1,Math.floor(view.length/7)))ctx.fillText(view[j].date.slice(5),x(j)-10,438)}
@@ -7,6 +7,7 @@ $('breakoutForm').addEventListener('submit', async event => {
  event.preventDefault();
  const lookup = ++lookupSequence;
  const through = event.currentTarget.dataset.recommendationDate;
+ const useDividendPrices = !through || event.currentTarget.dataset.recommendationAdjustment === BREAKOUT_ADJUSTMENT;
  const status = $('breakoutStatus');
  $('breakoutResult').hidden = true;
  try {
@@ -18,6 +19,7 @@ $('breakoutForm').addEventListener('submit', async event => {
   const symbol = $('breakoutSymbol').value.trim().toUpperCase();
   const params = new URLSearchParams({symbol});
   if (through) params.set('through', through);
+  if (useDividendPrices) params.set('strategy', 'breakout');
   const response = await fetch('/api/quote?' + params, {headers: {Authorization: 'Bearer ' + code}, cache: 'no-store'});
   const data = await response.json();
   if (lookup !== lookupSequence) return;
@@ -28,6 +30,9 @@ $('breakoutForm').addEventListener('submit', async event => {
   if (!response.ok) throw Error(data.error || '조회하지 못했습니다.');
   if (through && (data.through !== through || data.bars.at(-1)?.date !== through)) {
    throw Error('추천 기준일의 확정 종가가 없습니다.');
+  }
+  if (useDividendPrices && data.adjustment !== BREAKOUT_ADJUSTMENT) {
+   throw Error('배당을 반영한 일봉을 확인할 수 없습니다.');
   }
   try { localStorage.setItem('rsi2_device_code_v1', code); } catch {}
   $('breakoutCode').hidden = true;
@@ -51,7 +56,8 @@ $('breakoutForm').addEventListener('submit', async event => {
   $('breakoutProfile').textContent = describeVolumeProfile(data.bars).text;
   draw(r);
   $('breakoutResult').hidden = false;
-  status.textContent = `${data.through} ${through ? '추천 기준일' : '종가 기준'} · ${data.source}${data.staleWarning ? ' · 오래된 데이터 주의' : ''}`;
+  const adjustment = data.adjustment === BREAKOUT_ADJUSTMENT ? '분할·현금배당 반영' : '분할 반영';
+  status.textContent = `${data.through} ${through ? '추천 기준일' : '종가 기준'} · ${data.source} · ${adjustment}${data.staleWarning ? ' · 오래된 데이터 주의' : ''}`;
  } catch (error) {
   if (lookup === lookupSequence) status.textContent = error.message;
  }

@@ -2,6 +2,7 @@
 export class DataError extends Error { constructor(message, status=500){super(message);this.status=status} }
 const marketOrigin = 'https://api.massive.com';
 const splitPath = '/stocks/v1/splits';
+const dividendPath = '/stocks/v1/dividends';
 export function makeMarketData({key,fetcher=(url,options)=>fetch(url,{...options,signal:AbortSignal.timeout(8000)}),maxRetries=0,sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms))}) {
  if(!key) throw new DataError('시장 데이터 API 키가 설정되지 않았습니다.',503);
  async function request(path,params={}) {
@@ -96,6 +97,45 @@ export function makeMarketData({key,fetcher=(url,options)=>fetch(url,{...options
     byTicker.set(ticker, list);
    }
    for (const list of byTicker.values()) list.sort((a,b) => a.date.localeCompare(b.date));
+   return byTicker;
+  },
+  async dividends(from, through, {symbol} = {}) {
+   if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(through) || from > through ||
+       (symbol !== undefined && !/^[A-Z0-9.\-]{1,15}$/.test(symbol))) {
+    throw new DataError('배당 조회 기준일과 티커를 확인하세요.', 400);
+   }
+   const params = {'ex_dividend_date.gt': from, 'ex_dividend_date.lte': through, limit: 5000, sort: 'ex_dividend_date.asc,ticker.asc'};
+   if (symbol) params.ticker = symbol;
+   const events = new Map();
+   const seenPages = new Set();
+   let page = await request(dividendPath, params);
+   while (page) {
+    const empty = page.results === undefined && !page.next_url && (page.count === 0 || page.status === 'OK');
+    if (!Array.isArray(page.results) && !empty) {
+     throw new DataError('현금배당 목록을 확인할 수 없습니다.', 502);
+    }
+    for (const event of page.results ?? []) {
+     const {id, ticker, ex_dividend_date: date, split_adjusted_cash_amount: amount, currency} = event;
+     if (!id || typeof ticker !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(date) ||
+         date <= from || date > through || (symbol && ticker !== symbol)) {
+      throw new DataError('현금배당 데이터 형식이 올바르지 않습니다.', 502);
+     }
+     events.set(id, {ticker, date, amount, currency});
+    }
+    if (!page.next_url) break;
+    const next = new URL(page.next_url);
+    if (next.origin !== marketOrigin || next.pathname !== dividendPath || next.username || next.password || seenPages.has(next.search)) {
+     throw new DataError('현금배당 목록의 다음 페이지 주소가 올바르지 않습니다.', 502);
+    }
+    seenPages.add(next.search);
+    page = await request(dividendPath + next.search);
+   }
+   const byTicker = new Map();
+   for (const {ticker, ...event} of events.values()) {
+    const items = byTicker.get(ticker) ?? [];
+    items.push(event);
+    byTicker.set(ticker, items);
+   }
    return byTicker;
   }
  };

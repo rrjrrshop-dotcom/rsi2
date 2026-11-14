@@ -1,6 +1,7 @@
 import {compareScores, scoreName, scoreStrategy} from './scores.mjs';
 import {renderScoreCard, renderScoreGraphic} from './score-card.mjs';
 import {hasCurrentRecommendationScreen, RECOMMENDATION_INDEXES, RECOMMENDATION_LIMIT, RECOMMENDATION_SCOPES} from './recommendation-policy.mjs';
+import {BREAKOUT_ADJUSTMENT} from './breakout.mjs';
 const ids=['1000','trend','box','rsi2','breakout'],key='stocking_watchlist_v1',codeKey='rsi2_device_code_v1';
 const cfg={'1000':{form:'n1000Form',symbol:'n1000Symbol',code:'n1000Code',result:'n1000Summary',chart:'n1000Chart'},trend:{form:'trendForm',symbol:'trendSymbol',code:'trendCode',result:'trendResult',chart:'trendChart'},box:{form:'boxForm',symbol:'boxSymbol',code:'boxCode',result:'boxResult',chart:'boxChart'},rsi2:{form:'symbolForm',symbol:'lookupSymbol',code:'lookupCode',result:'quickResult',chart:'priceChart'},breakout:{form:'breakoutForm',symbol:'breakoutSymbol',code:'breakoutCode',result:'breakoutResult',chart:'breakoutChart'}};
 const $=id=>document.getElementById(id);let watch=[];try{const saved=JSON.parse(localStorage.getItem(key)||'[]');if(Array.isArray(saved))watch=[...new Set(saved.filter(s=>typeof s==='string'&&/^[A-Z0-9.\-]{1,15}$/.test(s)))].slice(0,10)}catch{}let generation=0;const cache=new Map();
@@ -8,7 +9,7 @@ function codeFor(id){return localStorage.getItem(codeKey)||$(cfg[id].code).value
 function save(){localStorage.setItem(key,JSON.stringify(watch))}
 function el(tag,text){const n=document.createElement(tag);if(text)n.textContent=text;return n}
 function selected(){return document.querySelector('[data-strategy][aria-selected="true"]')?.dataset.strategy||'rsi2'}
-function openDetail(id, symbol, date) {
+function openDetail(id, symbol, recommendation) {
  const c = cfg[id];
  const panel = $('strategy-' + id);
  $(c.symbol).value = symbol;
@@ -22,9 +23,15 @@ function openDetail(id, symbol, date) {
  if (id === 'rsi2') $(c.chart).closest('section').hidden = false;
  panel.querySelector('.detail-back').hidden = false;
  form.scrollIntoView({behavior: 'smooth', block: 'start'});
- if (id === 'breakout' && date) form.dataset.recommendationDate = date;
+ if (id === 'breakout' && recommendation?.date) {
+  form.dataset.recommendationDate = recommendation.date;
+  form.dataset.recommendationAdjustment = recommendation.adjustment ?? '';
+ }
  try { form.requestSubmit(); }
- finally { delete form.dataset.recommendationDate; }
+ finally {
+  delete form.dataset.recommendationDate;
+  delete form.dataset.recommendationAdjustment;
+ }
 }
 function back(id){const panel=$('strategy-'+id);[...panel.children].filter(n=>n.dataset.detailHidden!==undefined).forEach(n=>{n.hidden=n.dataset.detailHidden==='1';delete n.dataset.detailHidden});panel.querySelector('.detail-back').hidden=true}
 function renderRows(id, rows, container, removable = false) {
@@ -37,7 +44,7 @@ function renderRows(id, rows, container, removable = false) {
   open.className = removable ? 'watch-open' : 'recommend-open';
   open.append(el('strong',item.symbol), renderScoreGraphic(item, {compact:true}));
   if (item.error) open.title = item.error;
-  open.onclick = () => openDetail(id, item.symbol, removable ? undefined : item.date);
+  open.onclick = () => openDetail(id, item.symbol, removable ? undefined : item);
   wrap.append(open);
   if (removable) {
    const remove = el('button','삭제');
@@ -46,6 +53,7 @@ function renderRows(id, rows, container, removable = false) {
    remove.onclick = () => {
     watch = watch.filter(symbol => symbol !== item.symbol);
     cache.delete(item.symbol);
+    cache.delete('breakout:' + item.symbol);
     save();
     refreshWatch(id);
    };
@@ -65,8 +73,22 @@ function renderRows(id, rows, container, removable = false) {
   container.append(wrap);
  }
 }
-async function fetchBars(symbol,code){if(cache.has(symbol)&&Date.now()-cache.get(symbol).cachedAt<300000)return cache.get(symbol);const response=await fetch('/api/quote?symbol='+encodeURIComponent(symbol),{headers:{Authorization:'Bearer '+code},cache:'no-store'}),data=await response.json();if(!response.ok)throw Error(data.error||'일봉 조회 실패');data.cachedAt=Date.now();cache.set(symbol,data);return data}
-async function refreshWatch(id){const panel=$('strategy-'+id),list=panel.querySelector('.watch-items'),status=panel.querySelector('.watch-status'),run=++generation,code=codeFor(id);panel.querySelector('.watch-count').textContent=`${watch.length}/10`;if(!watch.length){list.replaceChildren();status.textContent='관심종목을 등록하세요.';return}if(!code){renderRows(id,watch.map(symbol=>({symbol,error:'개인 등록 코드 필요'})),list,true);status.textContent='점수 확인을 위해 개인 등록 코드를 입력하세요.';return}status.textContent='관심종목의 확정 일봉을 확인하는 중…';const result=[];for(const symbol of [...watch]){try{const data=await fetchBars(symbol,code),score=scoreStrategy(id,data.bars,symbol);result.push({symbol,...score,date:data.through,stale:data.staleWarning})}catch(e){result.push({symbol,error:e.message})}if(run!==generation)return}result.sort(compareScores);renderRows(id,result,list,true);status.textContent=`충족한 조건 수가 많은 순${result.some(x=>x.stale)?' · 오래된 종가 포함':''}${result.some(x=>x.error)?' · 일부 확인 실패 (요청 한도 또는 데이터 부족)':''}`}
+async function fetchBars(symbol, code, id) {
+ const params = new URLSearchParams({symbol});
+ const breakout = id === 'breakout';
+ const key = breakout ? 'breakout:' + symbol : symbol;
+ const previous = cache.get(key);
+ if (previous && Date.now() - previous.cachedAt < 300000) return previous;
+ if (breakout) params.set('strategy', 'breakout');
+ const response = await fetch('/api/quote?' + params, {headers: {Authorization: 'Bearer ' + code}, cache: 'no-store'});
+ const data = await response.json();
+ if (!response.ok) throw Error(data.error || '일봉 조회 실패');
+ if (breakout && data.adjustment !== BREAKOUT_ADJUSTMENT) throw Error('배당을 반영한 일봉을 확인할 수 없습니다.');
+ data.cachedAt = Date.now();
+ cache.set(key, data);
+ return data;
+}
+async function refreshWatch(id){const panel=$('strategy-'+id),list=panel.querySelector('.watch-items'),status=panel.querySelector('.watch-status'),run=++generation,code=codeFor(id);panel.querySelector('.watch-count').textContent=`${watch.length}/10`;if(!watch.length){list.replaceChildren();status.textContent='관심종목을 등록하세요.';return}if(!code){renderRows(id,watch.map(symbol=>({symbol,error:'개인 등록 코드 필요'})),list,true);status.textContent='점수 확인을 위해 개인 등록 코드를 입력하세요.';return}status.textContent='관심종목의 확정 일봉을 확인하는 중…';const result=[];for(const symbol of [...watch]){try{const data=await fetchBars(symbol,code,id),score=scoreStrategy(id,data.bars,symbol);result.push({symbol,...score,date:data.through,stale:data.staleWarning})}catch(e){result.push({symbol,error:e.message})}if(run!==generation)return}result.sort(compareScores);renderRows(id,result,list,true);status.textContent=`충족한 조건 수가 많은 순${result.some(x=>x.stale)?' · 오래된 종가 포함':''}${result.some(x=>x.error)?' · 일부 확인 실패 (요청 한도 또는 데이터 부족)':''}`}
 const recommendationState = new Map();
 const scopeLabels = {
  major: {title: '주요상장사', detail: '나스닥 100 · S&P 500 · 다우'},
@@ -138,8 +160,10 @@ async function refreshRecommendations(id) {
    row.passed === row.conditions.filter(condition => condition.passed === true).length
   ).sort(compareScores).slice(0, RECOMMENDATION_LIMIT);
   renderRows(id, rows, list);
+  const adjustment = id === 'breakout' && rows.some(row => row.adjustment !== BREAKOUT_ADJUSTMENT)
+   ? ' · 이전 분할 반영 기준' : '';
   status.textContent = rows.length
-   ? `${data.expectedDate} 확정 일봉 · ${rows.length}개 · 시총·재무 기준 통과${data.staleWarning ? ' · 오래된 결과 주의' : ''}`
+   ? `${data.expectedDate} 확정 일봉 · ${rows.length}개 · 시총·재무 기준 통과${adjustment}${data.staleWarning ? ' · 오래된 결과 주의' : ''}`
    : `${data.expectedDate} 기준 추천 후보가 없습니다.`;
  } catch (error) {
   if (requestVersion === state.version) status.textContent = error.message;

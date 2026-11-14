@@ -1,5 +1,6 @@
 import {makeMarketData,DataError} from '../server/market-data.mjs';
 import {constantTimeEqual} from '../server/subscriptions.mjs';
+import {adjustBreakoutBars, BREAKOUT_ADJUSTMENT} from '../breakout.mjs';
 /** Use only completed US Eastern calendar days; provider's free tier delivers prior dates. */
 export function priorEasternDay(now=new Date()) {
  const parts=new Intl.DateTimeFormat('en-CA',{timeZone:'America/New_York',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(now);
@@ -30,11 +31,21 @@ export default async function handler(req,res) {
   }
   const to=pinned ?? latest,d=new Date(`${to}T00:00:00Z`);d.setUTCDate(d.getUTCDate()-550);
   const from=d.toISOString().slice(0,10);
-  const bars=await makeMarketData({key:process.env.MASSIVE_API_KEY}).daily(symbol,from,to);
+  const client = makeMarketData({key:process.env.MASSIVE_API_KEY});
+  let bars = await client.daily(symbol, from, to);
   if(!bars.length)throw new DataError('해당 기간에 확인된 종가가 없습니다.',404);
   const through=bars.at(-1).date;
   if (pinned && through !== pinned) throw new DataError('추천 기준일의 확정 종가가 없습니다.', 404);
+  let adjustment = 'split-adjusted';
+  if (req.query.strategy === 'breakout') {
+    if (through > bars[0].date) {
+      const dividends = await client.dividends(bars[0].date, through, {symbol});
+      try { bars = adjustBreakoutBars(bars, dividends.get(symbol) ?? []); }
+      catch (error) { throw new DataError(error.message, 502); }
+    }
+    adjustment = BREAKOUT_ADJUSTMENT;
+  }
   const ageDays=dataAgeDays(through,latest);
-  return res.status(200).json({symbol,bars,source:'Massive',through,requestedThrough:to,ageDays,staleWarning:ageDays>7,adjustment:'split-adjusted'});
+  return res.status(200).json({symbol,bars,source:'Massive',through,requestedThrough:to,ageDays,staleWarning:ageDays>7,adjustment});
  }catch(e){return res.status(e instanceof DataError?e.status:500).json({error:e instanceof DataError?e.message:'조회 중 오류가 발생했습니다.'})}
 }

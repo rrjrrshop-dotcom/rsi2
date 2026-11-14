@@ -69,6 +69,7 @@ async function main() {
   }
   console.log(`US exchange-listed common stocks: ${listed.length}`);
   const screens = prepareRecommendations(client, directory, {major: indexed.securities, all: listed}, through, abort.signal);
+  const breakoutDividends = client.dividends(dates[0], through);
   const scan = scanGrouped({
     symbols: universe.securities.map(row => row.symbol), dates,
     getDaily: date => {
@@ -81,11 +82,12 @@ async function main() {
       const {major, all} = await screens;
       return {major: major.eligible, all: all.eligible};
     },
+    getBreakoutDividends: () => breakoutDividends,
     onProgress: ({completed, total, date}) => console.error(`${completed}/${total} ${date}`),
   });
   let result, screened;
   try {
-    [result, screened] = await Promise.all([scan, screens]);
+    [result, screened] = await Promise.all([scan, screens, breakoutDividends]);
   } catch (error) {
     abort.abort(error);
     throw error;
@@ -93,6 +95,7 @@ async function main() {
   result.preliminary.recommendationScreen = {...screened.major.summary, indexCounts: indexed.counts,
     indexSymbols: indexed.securities.length, indexSources: universe.indexSources};
   result.preliminary.marketRecommendationScreen = screened.all.summary;
+  console.log(`Breakout entries excluded because cash dividends could not be verified: ${result.preliminary.breakoutAdjustmentErrors}`);
   console.log('Recommendation counts:', JSON.stringify(recommendationCounts(result.preliminary)));
 
   // The two rankings may share a ticker. Compare it against the same daily frame once.

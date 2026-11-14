@@ -21,3 +21,43 @@ test('personal code protects quote and saved results before any provider request
   const rr=response();await results({method:'GET',headers:{authorization:'Bearer test-personal-code'}},rr);assert.equal(rr.statusCode,200);assert.equal(rr.body.expectedDate,'2026-11-06');assert.ok(!JSON.stringify(rr.body).includes('storage-secret'));
  }finally{globalThis.fetch=originalFetch;for(const key of ['PAIRING_SECRET','MASSIVE_API_KEY','UPSTASH_REDIS_REST_URL','UPSTASH_REDIS_REST_TOKEN'])if(originalEnv[key]===undefined)delete process.env[key];else process.env[key]=originalEnv[key]}
 });
+
+test('only the breakout quote applies cash dividends through its actual confirmed session', async () => {
+ const originalFetch = globalThis.fetch;
+ const {PAIRING_SECRET, MASSIVE_API_KEY} = process.env;
+ try {
+  process.env.PAIRING_SECRET = 'test-personal-code';
+  process.env.MASSIVE_API_KEY = 'provider-secret';
+  const through = '2026-11-06';
+  const history = [4,5,6].map(day => ({t: Date.UTC(2026,10,day,5), o: 100, h: 103, l: 98, c: 100, v: 100}));
+  let dividendRequests = 0;
+  globalThis.fetch = async url => {
+   if (url.pathname !== '/stocks/v1/dividends') return {ok: true, json: async () => ({results: history})};
+   dividendRequests++;
+   assert.equal(url.searchParams.get('ex_dividend_date.lte'), through);
+   assert.equal(url.searchParams.get('ticker'), 'KINS');
+   return {ok: true, json: async () => ({results: [
+    {id: 'd', ticker: 'KINS', ex_dividend_date: '2026-11-05', cash_amount: 4, split_adjusted_cash_amount: 2, currency: 'USD'},
+    {id: 'future', ticker: 'KINS', ex_dividend_date: through, cash_amount: 25, split_adjusted_cash_amount: 25, currency: 'USD'},
+   ]})};
+  };
+  const headers = {authorization: 'Bearer test-personal-code'};
+  const raw = response();
+  await quote({method: 'GET', headers, query: {symbol: 'KINS', through}}, raw);
+  assert.equal(raw.statusCode, 200);
+  assert.equal(raw.body.adjustment, 'split-adjusted');
+  assert.equal(dividendRequests, 0);
+  const breakout = response();
+  await quote({method: 'GET', headers, query: {symbol: 'KINS', through, strategy: 'breakout'}}, breakout);
+  assert.equal(breakout.statusCode, 200);
+  assert.equal(breakout.body.adjustment, 'split-and-dividend-adjusted');
+  assert.deepEqual(breakout.body.bars.map(b => b.close), [98,100,100]);
+  assert.equal(dividendRequests, 1);
+ } finally {
+  globalThis.fetch = originalFetch;
+  for (const [key, value] of Object.entries({PAIRING_SECRET, MASSIVE_API_KEY})) {
+   if (value === undefined) delete process.env[key];
+   else process.env[key] = value;
+  }
+ }
+});

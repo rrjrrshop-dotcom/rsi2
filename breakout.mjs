@@ -1,3 +1,38 @@
+export const BREAKOUT_ADJUSTMENT = 'split-and-dividend-adjusted';
+
+/** Apply cash dividends with ex-dates before the analysis session, keeping its close unchanged. */
+export function adjustBreakoutBars(bars, dividends) {
+ if (bars.length < 2 || !dividends.length) return bars;
+ const firstDate = bars[0]?.date;
+ const lastDate = bars.at(-1)?.date;
+ const amounts = new Map();
+ for (const {date, amount, currency} of dividends) {
+  if (date <= firstDate || date >= lastDate) continue;
+  if (currency !== 'USD' || !Number.isFinite(amount) || amount < 0) {
+   throw Error('달러 기준 현금배당 금액을 확인할 수 없습니다.');
+  }
+  amounts.set(date, (amounts.get(date) ?? 0) + amount);
+ }
+ if (!amounts.size) return bars;
+
+ const events = [...amounts].sort(([a], [b]) => a.localeCompare(b));
+ const adjusted = bars.slice();
+ let factor = 1;
+ for (let i = bars.length - 2; i >= 0; i--) {
+  const bar = bars[i];
+  while (events.length && events.at(-1)[0] > bar.date) {
+   const [, amount] = events.pop();
+   const eventFactor = 1 - amount / bar.close;
+   if (!(eventFactor > 0 && eventFactor <= 1)) throw Error('배당락 직전 종가와 현금배당을 확인하세요.');
+   factor *= eventFactor;
+  }
+  if (factor !== 1) {
+   adjusted[i] = {...bar, open: bar.open * factor, high: bar.high * factor, low: bar.low * factor, close: bar.close * factor};
+  }
+ }
+ return adjusted;
+}
+
 export function calculatePosition({entry,atr,allocation=100000,riskPercent=1}) {
  const unit=Math.floor(allocation*(riskPercent/100)/(2*atr)),stop=entry-2*atr;
  return {unit,stop};
