@@ -1,0 +1,104 @@
+name: Verify published saved closes
+on:
+  push:
+    branches: [verify-published-saved-closes]
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      UPSTASH_REDIS_REST_URL: ${{ secrets.UPSTASH_REDIS_REST_URL }}
+      UPSTASH_REDIS_REST_TOKEN: ${{ secrets.UPSTASH_REDIS_REST_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Read saved prices, recommendations and frame context
+        run: |
+          node --input-type=module <<'JS'
+          import assert from 'node:assert/strict';
+          import {readFile, writeFile} from 'node:fs/promises';
+          import {marketCache} from './server/market-cache.mjs';
+          import {RECOMMENDATION_SCOPES} from './recommendation-policy.mjs';
+          import {scoreStrategy} from './scores.mjs';
+          import quotes from './api/quote.mjs';
+          import results from './api/results.mjs';
+          import frames from './api/frame-context.mjs';
+          import validate from './api/validate-symbol.mjs';
+          const realFetch = globalThis.fetch;
+          let reads = 0;
+          globalThis.fetch = async (url, options) => {
+            assert.ok(new URL(url).hostname.endsWith('.upstash.io'));
+            const [command] = JSON.parse(options.body);
+            assert.ok(['GET', 'HGET'].includes(command), command);
+            reads++;
+            return realFetch(url, options);
+          };
+          process.env.PAIRING_SECRET = 'verify-local-handler';
+          const meta = await marketCache().current();
+          assert.equal(meta.dates.length,350);
+          assert.ok(meta.symbols >= 5000);
+          const headers = {authorization:'Bearer verify-local-handler'};
+          async function request(handler, query={}, want=200) {
+            const response = {
+              code:0, setHeader(){},
+              status(code){ this.code=code; return this; },
+              json(body){ assert.equal(this.code,want,body.error); return body; },
+            };
+            return handler({method:'GET',query,headers},response);
+          }
+          const status = await request(results);
+          assert.equal(status.expectedDate,meta.through);
+          assert.equal(status.marketReceivedAt,meta.receivedAt);
+          for(const {list} of Object.values(RECOMMENDATION_SCOPES)){
+            for(const [strategy, rows] of Object.entries(status.preliminary[list])){
+              assert.equal(rows.length,6);
+              const suggested=rows[0];
+              const quote=await request(quotes,{symbol:suggested.symbol,through:suggested.date,strategy});
+              assert.equal(quote.through,meta.through);
+              assert.ok(quote.source.includes('일일 저장본'));
+              const actual=scoreStrategy(strategy,quote.bars,suggested.symbol);
+              assert.equal(actual.passed,suggested.passed);
+              assert.equal(actual.total,suggested.total);
+            }
+          }
+          for(const symbol of ['SPY','NVDA','COST']){
+            const record=await request(validate,{symbol});
+            assert.ok(record.type);
+            const a=await request(quotes,{symbol});
+            const b=await request(quotes,{symbol});
+            assert.deepEqual(a,b);
+            assert.equal(a.through,meta.through);
+            assert.ok(a.bars.length >= 200);
+          }
+          const context=Object.keys(await marketCache().frames(meta))[0];
+          if(context){
+            const frame=await request(frames,{symbol:context,through:meta.through});
+            assert.equal(frame.asOf,meta.through);
+          }
+          console.log('SAVED_CLOSE_VERIFIED '+JSON.stringify({
+            date:meta.through, sessions:meta.dates.length, symbols:meta.symbols, storageReads:reads,
+            externalMarketRequests:0, totalStrategyLists:10,
+          }));
+          globalThis.fetch=realFetch;
+          const origin='https://rsi2.vercel.app';
+          for(const path of ['index.html','watchlist-ui.mjs','strategy-lists.js','top10.js']){
+            const r=await fetch(origin+'/'+path,{signal:AbortSignal.timeout(15000)});
+            assert.equal(r.status,200);
+            assert.equal(await r.text(),await readFile(path,'utf8'));
+          }
+          for(const path of ['quote?symbol=NVDA','results','frame-context?symbol=NVDA','validate-symbol?symbol=NVDA']){
+            const res=await fetch(origin+'/api/'+path,{signal:AbortSignal.timeout(15000)});
+            assert.equal(res.status,401);
+          }
+          await writeFile('/tmp/stocking-already-published.json',JSON.stringify([meta.through]));
+          console.log('Production source and personal-code protection verified.');
+          JS
+          printf '{"complete":true,"securities":[]}' > /tmp/stocking-universe-check.json
+          node scripts/scan.mjs /tmp/stocking-universe-check.json /tmp/stocking-already-published.json /tmp/stocking-duplicate-check.json
+          test ! -e /tmp/stocking-duplicate-check.json
