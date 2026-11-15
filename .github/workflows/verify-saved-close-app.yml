@@ -1,0 +1,25 @@
+name: Verify saved close app flow
+on:
+  push:
+    branches: [verify-saved-close-app]
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Verify cached API access and once-per-session behavior
+        run: npm test
+      - name: Verify mobile lookups and recommendation dates
+        run: |
+          gate="$RUNNER_TEMP/stocking-saved-close"
+          npm install --prefix "$gate" --no-audit --no-fund playwright@1.62.1
+          cp .github/saved-close-app-smoke.mjs "$gate/check.mjs"
+          node "$gate/check.mjs"
