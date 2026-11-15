@@ -8,5 +8,3 @@ window.renderStockingTop = data => {
 };
 window.showStockingTopError = message=>{document.getElementById('topResults').replaceChildren();document.getElementById('topStatus').textContent=message};
 document.getElementById('topRefresh').addEventListener('click',()=>{const remembered=(()=>{try{return localStorage.getItem('rsi2_device_code_v1')}catch{return null}})();if(!remembered){document.getElementById('resultCode').value=document.getElementById('lookupCode').value;document.getElementById('topStatus').textContent='개인 등록 코드를 종목 조회 칸에 입력한 뒤 다시 눌러 주세요.'}document.getElementById('loadScan').click()});
-document.getElementById('tab-rsi2').addEventListener('click',()=>{try{if(localStorage.getItem('rsi2_device_code_v1'))document.getElementById('loadScan').click()}catch{}});
-try{if(localStorage.getItem('rsi2_device_code_v1'))document.getElementById('loadScan').click()}catch{}
