@@ -42,21 +42,25 @@ export function makeMarketData({key,fetcher=(url,options)=>fetch(url,{...options
   async dailyMarket(date, {adjusted = true} = {}) {
    if(!/^\d{4}-\d{2}-\d{2}$/.test(date))throw new DataError('조회 날짜가 올바르지 않습니다.',400);
    const data=await request(`/v2/aggs/grouped/locale/us/market/stocks/${date}`,{adjusted:String(adjusted)});
-   return (data.results||[]).map(r=>({symbol:r.T,open:r.o,high:r.h,low:r.l,close:r.c,volume:r.v}));
+   const rows = data.results ?? [];
+   if (data.next_url || !Array.isArray(rows) || (Number.isInteger(data.resultsCount) && data.resultsCount !== rows.length)) {
+    throw new DataError('확정 일봉 목록이 일부만 반환되었습니다.', 502);
+   }
+   return rows.map(r=>({symbol:r.T,open:r.o,high:r.h,low:r.l,close:r.c,volume:r.v}));
   },
-  async stockDirectory(date) {
+  async stockDirectory(date, {allTypes = false} = {}) {
    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new DataError('조회 날짜가 올바르지 않습니다.', 400);
    const path = '/v3/reference/tickers';
    const directory = [];
    const seenPages = new Set();
-   let page = await request(path, {market: 'stocks', type: 'CS', active: true, date, limit: 1000, sort: 'ticker', order: 'asc'});
+   let page = await request(path, {market: 'stocks', ...(!allTypes && {type: 'CS'}), active: true, date, limit: 1000, sort: 'ticker', order: 'asc'});
    while (page) {
     if (!Array.isArray(page.results)) throw new DataError('기업 식별자 목록을 확인할 수 없습니다.', 502);
     for (const row of page.results) {
-     if (row.type === 'CS' && row.market === 'stocks' && row.locale === 'us' && row.active !== false &&
+     if ((allTypes || row.type === 'CS') && row.market === 'stocks' && row.locale === 'us' && row.active !== false &&
          typeof row.ticker === 'string' && /^[A-Z0-9.\-]{1,15}$/.test(row.ticker)) {
       directory.push({ticker: row.ticker, cik_str: /^\d{1,10}$/.test(row.cik ?? '') ? Number(row.cik) : null,
-       name: row.name ?? '', exchange: row.primary_exchange ?? null});
+       name: row.name ?? '', exchange: row.primary_exchange ?? null, ...(allTypes && {type: row.type ?? '미확인'})});
      }
     }
     if (!page.next_url) break;
@@ -99,7 +103,7 @@ export function makeMarketData({key,fetcher=(url,options)=>fetch(url,{...options
    for (const list of byTicker.values()) list.sort((a,b) => a.date.localeCompare(b.date));
    return byTicker;
   },
-  async dividends(from, through, {symbol} = {}) {
+  async dividends(from, through, {symbol, includeCashAmount = false} = {}) {
    if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(through) || from > through ||
        (symbol !== undefined && !/^[A-Z0-9.\-]{1,15}$/.test(symbol))) {
     throw new DataError('배당 조회 기준일과 티커를 확인하세요.', 400);
@@ -120,7 +124,7 @@ export function makeMarketData({key,fetcher=(url,options)=>fetch(url,{...options
          date <= from || date > through || (symbol && ticker !== symbol)) {
       throw new DataError('현금배당 데이터 형식이 올바르지 않습니다.', 502);
      }
-     events.set(id, {ticker, date, amount, currency});
+     events.set(id, {ticker, date, amount, currency, ...(includeCashAmount && {cashAmount: event.cash_amount})});
     }
     if (!page.next_url) break;
     const next = new URL(page.next_url);
