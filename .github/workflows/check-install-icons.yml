@@ -21,7 +21,9 @@ jobs:
           npm install --prefix "$gate" --no-audit --no-fund playwright@1.62.1
           cat > "$gate/check.mjs" <<'JS'
           import assert from 'node:assert/strict';
-          import {readFile} from 'node:fs/promises';
+          import {readFile, mkdtemp, rm} from 'node:fs/promises';
+          import {tmpdir} from 'node:os';
+          import {join} from 'node:path';
           import {chromium, devices} from 'playwright';
           const origin = 'https://rsi2.vercel.app';
           const manifest = JSON.parse(await readFile('manifest.webmanifest','utf8'));
@@ -32,10 +34,12 @@ jobs:
             assert.equal(res.status,200,path);
             assert.ok((await readFile('.' + path)).equals(Buffer.from(await res.arrayBuffer())), path);
           }
-          const browser = await chromium.launch({executablePath:'/usr/bin/google-chrome',args:['--no-sandbox']});
-          try {
-            for (const [device, options] of [['desktop',{}],['Android viewport',devices['Pixel 7']]]) {
-              const context = await browser.newContext(options);
+          for (const [device, options] of [['desktop',{}],['Android viewport',devices['Pixel 7']]]) {
+            const profile = await mkdtemp(join(tmpdir(), 'stocking-chrome-'));
+            const context = await chromium.launchPersistentContext(profile, {
+              ...options, executablePath:'/usr/bin/google-chrome', args:['--no-sandbox'],
+            });
+            try {
               const page = await context.newPage();
               await page.goto(origin,{waitUntil:'load'});
               assert.match(await page.title(),/Stocking/);
@@ -60,8 +64,10 @@ jobs:
               const lookup = await cdp.send('Page.getInstallabilityErrors');
               assert.deepEqual(lookup.installabilityErrors,[]);
               console.log(device + ' Chrome read both icon links, decoded all icon assets, and passed installability checks.');
+            } finally {
               await context.close();
+              await rm(profile, {recursive:true,force:true});
             }
-          } finally { await browser.close(); }
+          }
           JS
           node "$gate/check.mjs"
