@@ -1,0 +1,67 @@
+name: Check app icons in production Chrome
+on:
+  push:
+    branches: [verify-install-icons]
+permissions:
+  contents: read
+jobs:
+  chrome:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Check app manifest and icon decoding
+        run: |
+          gate="$RUNNER_TEMP/stocking-icon-check"
+          npm install --prefix "$gate" --no-audit --no-fund playwright@1.62.1
+          cat > "$gate/check.mjs" <<'JS'
+          import assert from 'node:assert/strict';
+          import {readFile} from 'node:fs/promises';
+          import {chromium, devices} from 'playwright';
+          const origin = 'https://rsi2.vercel.app';
+          const manifest = JSON.parse(await readFile('manifest.webmanifest','utf8'));
+          const favicon = '/favicon.ico';
+          const apple = '/assets/app-icons/apple-touch-icon-180.png';
+          for (const path of ['/index.html','/manifest.webmanifest',favicon,apple,...manifest.icons.map(icon=>icon.src)]) {
+            const res = await fetch(origin + path,{signal:AbortSignal.timeout(15000)});
+            assert.equal(res.status,200,path);
+            assert.ok((await readFile('.' + path)).equals(Buffer.from(await res.arrayBuffer())), path);
+          }
+          const browser = await chromium.launch({executablePath:'/usr/bin/google-chrome',args:['--no-sandbox']});
+          try {
+            for (const [device, options] of [['desktop',{}],['Android viewport',devices['Pixel 7']]]) {
+              const context = await browser.newContext(options);
+              const page = await context.newPage();
+              await page.goto(origin,{waitUntil:'load'});
+              assert.match(await page.title(),/Stocking/);
+              assert.equal(await page.locator('link[rel="icon"]').getAttribute('href'),favicon);
+              assert.equal(await page.locator('link[rel="apple-touch-icon"]').getAttribute('href'),apple);
+              const expected = [favicon,apple,...manifest.icons.map(icon=>icon.src)];
+              const sizes = await page.evaluate(async paths => {
+                return await Promise.all(paths.map(async path => {
+                  const image = new Image();
+                  image.src = path;
+                  await image.decode();
+                  return [image.naturalWidth,image.naturalHeight];
+                }));
+              },expected);
+              assert.ok([16,32,48].includes(sizes[0][0]));
+              assert.deepEqual(sizes.slice(1),[[180,180],[192,192],[512,512],[512,512]]);
+              const cdp = await context.newCDPSession(page);
+              const loaded = await cdp.send('Page.getAppManifest');
+              assert.equal(new URL(loaded.url).pathname,'/manifest.webmanifest');
+              assert.deepEqual(loaded.errors,[]);
+              assert.deepEqual(JSON.parse(loaded.data).icons,manifest.icons);
+              const lookup = await cdp.send('Page.getInstallabilityErrors');
+              assert.deepEqual(lookup.installabilityErrors,[]);
+              console.log(device + ' Chrome read both icon links, decoded all icon assets, and passed installability checks.');
+              await context.close();
+            }
+          } finally { await browser.close(); }
+          JS
+          node "$gate/check.mjs"
