@@ -1,21 +1,13 @@
 name: Daily market scan
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths:
-      - 'scripts/scan.mjs'
-      - 'scripts/build-universe.mjs'
-      - 'server/grouped-scan.mjs'
-      - 'server/index-constituents.mjs'
-      - 'scores.mjs'
-      - 'breakout.mjs'
-      - 'server/quotelinks-fundamentals.mjs'
-      - 'server/recommendation-screen.mjs'
-      - 'recommendation-policy.mjs'
   schedule:
-    # 11:00 UTC Tuesday–Saturday = previous US session Monday–Friday.
-    - cron: '0 11 * * 2-6'
+    # Stocks Basic releases the date at 20:15 ET. Collect at after-hours close + 30m.
+    - cron: '30 20 * * 1-5'
+      timezone: 'America/New_York'
+    # Recover an unpublished session after midnight. Published dates exit before market data calls.
+    - cron: '30 0 * * 2-6'
+      timezone: 'America/New_York'
 permissions:
   contents: read
 concurrency:
@@ -24,7 +16,7 @@ concurrency:
 jobs:
   scan:
     runs-on: ubuntu-latest
-    # The 350 market-wide snapshots and SEC-based financial screen run concurrently.
+    # An empty private history needs the one-time 350-session load.
     timeout-minutes: 180
     env:
       MASSIVE_API_KEY: ${{ secrets.MASSIVE_API_KEY }}
@@ -41,11 +33,28 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
+      - name: Check for an unpublished close
+        id: pending
+        run: |
+          node --input-type=module <<'JS'
+          import {appendFile} from 'node:fs/promises';
+          import {marketCache} from './server/market-cache.mjs';
+          import {collectionTarget} from './server/trading-calendar.mjs';
+          const current = await marketCache().current();
+          const target = collectionTarget();
+          const pending = !current || current.through < target;
+          if (!pending) console.log(`Confirmed close ${current.through} already published`);
+          await appendFile(process.env.GITHUB_OUTPUT, `pending=${pending}\n`);
+          JS
       - name: Validate
+        if: steps.pending.outputs.pending == 'true'
         run: npm test
       - name: Load current index constituents
+        if: steps.pending.outputs.pending == 'true'
         run: node scripts/build-universe.mjs universe.json
-      - name: Scan confirmed end-of-day bars
+      - name: Save the market close and calculate recommendations
+        if: steps.pending.outputs.pending == 'true'
         run: node scripts/scan.mjs universe.json auto scan-result.json
       - name: Notify registered devices
+        if: ${{ hashFiles('scan-result.json') != '' }}
         run: node scripts/notify.mjs scan-result.json universe.json

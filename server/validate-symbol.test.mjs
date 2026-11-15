@@ -1,3 +1,23 @@
-import {test} from 'node:test';import assert from 'node:assert/strict';import handler from '../api/validate-symbol.mjs';
-function response(){return {statusCode:200,setHeader(){},status(n){this.statusCode=n;return this},json(x){this.body=x;return this}}}
-test('registration validates ticker against active stock reference and fails closed',async()=>{const oldFetch=global.fetch,oldSecret=process.env.PAIRING_SECRET,oldKey=process.env.MASSIVE_API_KEY;process.env.PAIRING_SECRET='test';process.env.MASSIVE_API_KEY='test';try{let res=response();await handler({method:'GET',headers:{authorization:'Bearer test'},query:{symbol:'BAD!'}},res);assert.equal(res.statusCode,400);global.fetch=async()=>({ok:true,json:async()=>({results:{ticker:'ABC',active:false,market:'stocks'}})});res=response();await handler({method:'GET',headers:{authorization:'Bearer test'},query:{symbol:'ABC'}},res);assert.equal(res.statusCode,404);global.fetch=async()=>({ok:true,json:async()=>({results:{ticker:'ABC',name:'ABC',active:true,market:'stocks'}})});res=response();await handler({method:'GET',headers:{authorization:'Bearer test'},query:{symbol:'ABC'}},res);assert.equal(res.statusCode,200);global.fetch=async()=>{throw Error('network')};res=response();await handler({method:'GET',headers:{authorization:'Bearer test'},query:{symbol:'ABC'}},res);assert.equal(res.statusCode,502)}finally{global.fetch=oldFetch;if(oldSecret===undefined)delete process.env.PAIRING_SECRET;else process.env.PAIRING_SECRET=oldSecret;if(oldKey===undefined)delete process.env.MASSIVE_API_KEY;else process.env.MASSIVE_API_KEY=oldKey}});
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import handler from '../api/validate-symbol.mjs';
+
+test('registration rejects invalid tickers before accessing storage', async () => {
+  const previous = process.env.PAIRING_SECRET;
+  const previousFetch = globalThis.fetch;
+  process.env.PAIRING_SECRET = 'test';
+  try {
+    globalThis.fetch = () => assert.fail('unexpected request');
+    const res = {
+      statusCode: 200, setHeader() {},
+      status(code) { this.statusCode = code; return this; },
+      json() {},
+    };
+    await handler({method:'GET', headers:{authorization:'Bearer test'}, query:{symbol:'BAD!'}}, res);
+    assert.equal(res.statusCode, 400);
+  } finally {
+    globalThis.fetch = previousFetch;
+    if (previous === undefined) delete process.env.PAIRING_SECRET;
+    else process.env.PAIRING_SECRET = previous;
+  }
+});

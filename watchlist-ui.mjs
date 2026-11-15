@@ -23,7 +23,7 @@ function openDetail(id, symbol, recommendation) {
  if (id === 'rsi2') $(c.chart).closest('section').hidden = false;
  panel.querySelector('.detail-back').hidden = false;
  form.scrollIntoView({behavior: 'smooth', block: 'start'});
- if (id === 'breakout' && recommendation?.date) {
+ if (recommendation?.date) {
   form.dataset.recommendationDate = recommendation.date;
   form.dataset.recommendationAdjustment = recommendation.adjustment ?? '';
  }
@@ -78,14 +78,13 @@ async function fetchBars(symbol, code, id) {
  const breakout = id === 'breakout';
  const key = breakout ? 'breakout:' + symbol : symbol;
  const previous = cache.get(key);
- if (previous && Date.now() - previous.cachedAt < 300000) return previous;
+ if (previous?.code === code && Date.now() - previous.cachedAt < 300000) return previous.data;
  if (breakout) params.set('strategy', 'breakout');
  const response = await fetch('/api/quote?' + params, {headers: {Authorization: 'Bearer ' + code}, cache: 'no-store'});
  const data = await response.json();
  if (!response.ok) throw Error(data.error || '일봉 조회 실패');
  if (breakout && data.adjustment !== BREAKOUT_ADJUSTMENT) throw Error('배당을 반영한 일봉을 확인할 수 없습니다.');
- data.cachedAt = Date.now();
- cache.set(key, data);
+ cache.set(key, {code, cachedAt: Date.now(), data});
  return data;
 }
 async function refreshWatch(id){const panel=$('strategy-'+id),list=panel.querySelector('.watch-items'),status=panel.querySelector('.watch-status'),run=++generation,code=codeFor(id);panel.querySelector('.watch-count').textContent=`${watch.length}/10`;if(!watch.length){list.replaceChildren();status.textContent='관심종목을 등록하세요.';return}if(!code){renderRows(id,watch.map(symbol=>({symbol,error:'개인 등록 코드 필요'})),list,true);status.textContent='점수 확인을 위해 개인 등록 코드를 입력하세요.';return}status.textContent='관심종목의 확정 일봉을 확인하는 중…';const result=[];for(const symbol of [...watch]){try{const data=await fetchBars(symbol,code,id),score=scoreStrategy(id,data.bars,symbol);result.push({symbol,...score,date:data.through,stale:data.staleWarning})}catch(e){result.push({symbol,error:e.message})}if(run!==generation)return}result.sort(compareScores);renderRows(id,result,list,true);status.textContent=`충족한 조건 수가 많은 순${result.some(x=>x.stale)?' · 오래된 종가 포함':''}${result.some(x=>x.error)?' · 일부 확인 실패 (요청 한도 또는 데이터 부족)':''}`}
@@ -129,7 +128,26 @@ function scopePicker(id, panel) {
  panel.querySelector('h2').after(group);
 }
 
-async function refreshRecommendations(id) {
+let recentRecommendations;
+function savedRecommendations(code, reload) {
+ if (!reload && recentRecommendations?.code === code && Date.now() - recentRecommendations.at < 60000) {
+  return recentRecommendations.promise;
+ }
+ const entry = {code, at: Date.now()};
+ entry.promise = fetch('/api/results', {headers: {Authorization: 'Bearer ' + code}, cache: 'no-store'})
+  .then(async response => {
+   const data = await response.json();
+   if (!response.ok) throw Error(data.error || '검색 결과 조회 실패');
+   return data;
+  }).catch(error => {
+   if (recentRecommendations === entry) recentRecommendations = undefined;
+   throw error;
+  });
+ recentRecommendations = entry;
+ return entry.promise;
+}
+
+async function refreshRecommendations(id, reload = false) {
  const panel = $('strategy-'+id);
  const list = panel.querySelector('.recommend-items');
  const status = panel.querySelector('.recommend-status');
@@ -144,10 +162,8 @@ async function refreshRecommendations(id) {
  }
  status.textContent = '최근 저장된 검색 결과를 확인하는 중…';
  try {
-  const response = await fetch('/api/results', {headers: {Authorization: 'Bearer ' + code}, cache: 'no-store'});
-  const data = await response.json();
+  const data = await savedRecommendations(code, reload);
   if (requestVersion !== state.version) return;
-  if (!response.ok) throw Error(data.error || '검색 결과 조회 실패');
   if (!hasCurrentRecommendationScreen(data, scope)) {
    status.textContent = `${scopeLabels[scope].title} 범위의 최신 검색 결과를 기다리고 있습니다.`;
    return;
@@ -163,7 +179,7 @@ async function refreshRecommendations(id) {
   const adjustment = id === 'breakout' && rows.some(row => row.adjustment !== BREAKOUT_ADJUSTMENT)
    ? ' · 이전 분할 반영 기준' : '';
   status.textContent = rows.length
-   ? `${data.expectedDate} 확정 일봉 · ${rows.length}개 · 시총·재무 기준 통과${adjustment}${data.staleWarning ? ' · 오래된 결과 주의' : ''}`
+   ? `${data.expectedDate} 저장 종가 · ${rows.length}개 · 시총·재무 기준 통과${adjustment}${data.staleWarning ? ' · 오래된 결과 주의' : ''}`
    : `${data.expectedDate} 기준 추천 후보가 없습니다.`;
  } catch (error) {
   if (requestVersion === state.version) status.textContent = error.message;
@@ -179,7 +195,7 @@ for(const id of ids){const panel=$('strategy-'+id),heading=panel.querySelector('
  // Preserve previous controls and result containers for existing scripts, but replace their old ranked lists.
  for(const old of [id==='rsi2'?$('topResults'):$(id==='1000'?'thousandList':id+'List')])if(old)old.closest('section').hidden=true;
  const form=shared.querySelector('.watch-form'),field=shared.querySelector('.watch-symbol'),codeInput=shared.querySelector('.watch-code');try{if(localStorage.getItem(codeKey))codeInput.hidden=true}catch{}form.onsubmit=async e=>{e.preventDefault();const symbol=field.value.trim().toUpperCase(),status=shared.querySelector('.watch-status');if(watch.includes(symbol)){status.textContent='이미 등록된 종목입니다.';return}if(watch.length>=10){status.textContent='관심종목은 최대 10개입니다.';return}const code=localStorage.getItem(codeKey)||codeInput.value.trim()||$(cfg[id].code).value.trim();if(!code){status.textContent='개인 등록 코드를 입력하세요.';return}const submit=form.querySelector('button');submit.disabled=true;status.textContent='현재 상장 종목인지 확인하는 중…';try{const response=await fetch('/api/validate-symbol?symbol='+encodeURIComponent(symbol),{headers:{Authorization:'Bearer '+code},cache:'no-store'}),data=await response.json();if(!response.ok)throw Error(data.error||'종목을 확인하지 못했습니다.');if(watch.includes(symbol)||watch.length>=10)throw Error('이미 등록되었거나 10개 한도에 도달했습니다.');watch.push(symbol);save();localStorage.setItem(codeKey,code);codeInput.hidden=true;field.value='';await refreshWatch(id);refreshRecommendations(id)}catch(e){status.textContent=e.message}finally{submit.disabled=false}};
- recommend.querySelector('.recommend-refresh').onclick = () => refreshRecommendations(id);
+ recommend.querySelector('.recommend-refresh').onclick = () => refreshRecommendations(id, true);
  $('tab-'+id).addEventListener('click',()=>{back(id);refreshWatch(id);refreshRecommendations(id)});
 }
 refreshWatch(selected());refreshRecommendations(selected());

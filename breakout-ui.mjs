@@ -15,7 +15,7 @@ $('breakoutForm').addEventListener('submit', async event => {
   try { code = localStorage.getItem('rsi2_device_code_v1') || ''; } catch {}
   code ||= $('breakoutCode').value.trim();
   if (!code) throw Error('개인 등록 코드를 입력하세요.');
-  status.textContent = through ? `${through} 추천 기준일 조회 중…` : '확정 일봉 조회 중…';
+  status.textContent = through ? `${through} 추천 기준일 조회 중…` : '저장된 일봉 조회 중…';
   const symbol = $('breakoutSymbol').value.trim().toUpperCase();
   const params = new URLSearchParams({symbol});
   if (through) params.set('through', through);

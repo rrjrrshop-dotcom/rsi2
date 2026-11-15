@@ -1,63 +1,119 @@
-import {test} from 'node:test';import assert from 'node:assert/strict';import quote from '../api/quote.mjs';import results from '../api/results.mjs';
-function response(){return {headers:{},statusCode:null,body:null,setHeader(k,v){this.headers[k]=v},status(n){this.statusCode=n;return this},json(x){this.body=x;return this}}}
-test('personal code protects quote and saved results before any provider request',async()=>{
- const originalFetch=globalThis.fetch,originalEnv={...process.env};let calls=[];
- try{
-  process.env.PAIRING_SECRET='test-personal-code';process.env.MASSIVE_API_KEY='provider-secret';process.env.UPSTASH_REDIS_REST_URL='https://example.upstash.io';process.env.UPSTASH_REDIS_REST_TOKEN='storage-secret';
-  globalThis.fetch=async(url,opts)=>{calls.push(String(url));if(String(url).startsWith('https://api.massive.com/'))return {ok:true,json:async()=>({results:[{t:Date.UTC(2026,10,6,5),o:36,h:38,l:35,c:37.04,v:1000}]})};return {ok:true,json:async()=>({result:JSON.stringify({expectedDate:'2026-11-06',total:1,buy:[]})})}};
-  for(const h of [quote,results]){const res=response();await h({method:'GET',query:{symbol:'UGI'},headers:{authorization:'Bearer wrong'}},res);assert.equal(res.statusCode,401)}assert.equal(calls.length,0);
-  const qr=response();await quote({method:'GET',query:{symbol:'UGI'},headers:{authorization:'Bearer test-personal-code'}},qr);assert.equal(qr.statusCode,200);assert.equal(qr.body.bars[0].close,37.04);assert.ok(!JSON.stringify(qr.body).includes('provider-secret'));
-  const headers = {authorization: 'Bearer test-personal-code'};
-  const pinned = response();
-  await quote({method: 'GET', query: {symbol: 'UGI', through: '2026-11-06'}, headers}, pinned);
-  assert.equal(pinned.statusCode, 200);
-  assert.equal(pinned.body.through, '2026-11-06');
-  assert.ok(new URL(calls.at(-1)).pathname.endsWith('/2026-11-06'));
-  for (const [through, code] of [['2026-11-07', 404], ['2026-02-30', 400], ['9999-01-01', 400]]) {
-   const res = response();
-   await quote({method: 'GET', query: {symbol: 'UGI', through}, headers}, res);
-   assert.equal(res.statusCode, code);
-  }
-  const rr=response();await results({method:'GET',headers:{authorization:'Bearer test-personal-code'}},rr);assert.equal(rr.statusCode,200);assert.equal(rr.body.expectedDate,'2026-11-06');assert.ok(!JSON.stringify(rr.body).includes('storage-secret'));
- }finally{globalThis.fetch=originalFetch;for(const key of ['PAIRING_SECRET','MASSIVE_API_KEY','UPSTASH_REDIS_REST_URL','UPSTASH_REDIS_REST_TOKEN'])if(originalEnv[key]===undefined)delete process.env[key];else process.env[key]=originalEnv[key]}
-});
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import {marketCache} from './market-cache.mjs';
+import quote from '../api/quote.mjs';
+import frame from '../api/frame-context.mjs';
+import validate from '../api/validate-symbol.mjs';
+import results from '../api/results.mjs';
 
-test('only the breakout quote applies cash dividends through its actual confirmed session', async () => {
- const originalFetch = globalThis.fetch;
- const {PAIRING_SECRET, MASSIVE_API_KEY} = process.env;
- try {
-  process.env.PAIRING_SECRET = 'test-personal-code';
-  process.env.MASSIVE_API_KEY = 'provider-secret';
-  const through = '2026-11-06';
-  const history = [4,5,6].map(day => ({t: Date.UTC(2026,10,day,5), o: 100, h: 103, l: 98, c: 100, v: 100}));
-  let dividendRequests = 0;
-  globalThis.fetch = async url => {
-   if (url.pathname !== '/stocks/v1/dividends') return {ok: true, json: async () => ({results: history})};
-   dividendRequests++;
-   assert.equal(url.searchParams.get('ex_dividend_date.lte'), through);
-   assert.equal(url.searchParams.get('ticker'), 'KINS');
-   return {ok: true, json: async () => ({results: [
-    {id: 'd', ticker: 'KINS', ex_dividend_date: '2026-11-05', cash_amount: 4, split_adjusted_cash_amount: 2, currency: 'USD'},
-    {id: 'future', ticker: 'KINS', ex_dividend_date: through, cash_amount: 25, split_adjusted_cash_amount: 25, currency: 'USD'},
-   ]})};
+function response() {
+  return {headers: {}, statusCode: null, body: null,
+    setHeader(key, value) { this.headers[key] = value; },
+    status(code) { this.statusCode = code; return this; },
+    json(body) { this.body = body; return this; }};
+}
+const settings = {url: 'https://example.upstash.io', token: 'storage-secret'};
+const headers = {authorization: 'Bearer test-personal-code'};
+const days = ['2026-11-04','2026-11-05','2026-11-06','2026-11-09'];
+
+test('private saved market history drives all quote and recommendation requests', async () => {
+  const originalFetch = globalThis.fetch;
+  const env = {
+    PAIRING_SECRET: 'test-personal-code',
+    UPSTASH_REDIS_REST_URL: settings.url,
+    UPSTASH_REDIS_REST_TOKEN: settings.token,
   };
-  const headers = {authorization: 'Bearer test-personal-code'};
-  const raw = response();
-  await quote({method: 'GET', headers, query: {symbol: 'KINS', through}}, raw);
-  assert.equal(raw.statusCode, 200);
-  assert.equal(raw.body.adjustment, 'split-adjusted');
-  assert.equal(dividendRequests, 0);
-  const breakout = response();
-  await quote({method: 'GET', headers, query: {symbol: 'KINS', through, strategy: 'breakout'}}, breakout);
-  assert.equal(breakout.statusCode, 200);
-  assert.equal(breakout.body.adjustment, 'split-and-dividend-adjusted');
-  assert.deepEqual(breakout.body.bars.map(b => b.close), [98,100,100]);
-  assert.equal(dividendRequests, 1);
- } finally {
-  globalThis.fetch = originalFetch;
-  for (const [key, value] of Object.entries({PAIRING_SECRET, MASSIVE_API_KEY})) {
-   if (value === undefined) delete process.env[key];
-   else process.env[key] = value;
+  const previousEnv = Object.fromEntries(Object.keys(env).map(key => [key, process.env[key]]));
+  const strings = new Map(), hashes = new Map(), commands = [];
+  function execute([command, key, ...args]) {
+    commands.push(command);
+    switch (command) {
+      case 'GET': return strings.get(key) ?? null;
+      case 'SET': strings.set(key, args[0]); return 'OK';
+      case 'HSET': {
+        const hash = hashes.get(key) ?? new Map();
+        for (let i = 0; i < args.length; i += 2) hash.set(args[i], args[i + 1]);
+        hashes.set(key, hash);
+        return args.length / 2;
+      }
+      case 'HGET': return hashes.get(key)?.get(args[0]) ?? null;
+      case 'HGETALL': return [...(hashes.get(key) ?? [])].flat();
+      case 'PERSIST': case 'EXPIRE': return 1;
+      case 'DEL': strings.delete(key); hashes.delete(key); return 1;
+      default: throw Error(command);
+    }
   }
- }
+  const call = async (handler, query = {}, units = headers, method = 'GET') => {
+    const res = response();
+    await handler({method, query, headers: units}, res);
+    return res;
+  };
+  try {
+    Object.assign(process.env, env);
+    globalThis.fetch = async (url, options) => {
+      assert.equal(new URL(url).origin, settings.url, 'quote and search use only saved storage');
+      assert.equal(options.headers.Authorization, 'Bearer ' + settings.token);
+      const request = JSON.parse(options.body);
+      if (new URL(url).pathname === '/multi-exec') return {ok: true, json: async () => request.map(args => ({result: execute(args)}))};
+      return {ok: true, json: async () => ({result: execute(request)})};
+    };
+    for (const handler of [quote, frame, validate, results]) {
+      assert.equal((await call(handler, {symbol: 'UGI'}, {authorization: 'Bearer wrong'})).statusCode, 401);
+    }
+    assert.equal(commands.length, 0);
+    const store = marketCache();
+    assert.equal((await call(quote, {symbol:'UGI'})).statusCode, 503);
+    const original = {name: 'UGI Corporation', type: 'CS',
+      bars: days.map((date, i) => ({date, open: 100, high: 103, low: 98, close: 100, volume: 100 + i})).slice(0, 3),
+      dividends: [{date: days[1], amount: 2, cashAmount: 4, currency: 'USD'},
+        {date: days[2], amount: 25, cashAmount: 25, currency: 'USD'}],
+    };
+    const receivedAt = '2026-11-06T23:00:00Z';
+    const meta = await store.stage({dates: days.slice(0, 3), history: new Map([['UGI', original]]), receivedAt});
+    assert.equal(await store.current(), null);
+    const expectedFrame = {status:'available', trend:'상승', date:days[2]};
+    await store.publish(meta, {expectedDate: days[2], total: 1, buy: []}, {UGI: expectedFrame}, null);
+    assert.deepEqual(await store.current(), meta);
+    assert.deepEqual((await store.histories(meta)).get('UGI').bars, original.bars);
+    const saved = await call(results);
+    const manual = await call(quote, {symbol:'ugi'});
+    assert.equal(saved.statusCode, 200);
+    assert.equal(manual.statusCode, 200);
+    assert.equal(manual.body.through, saved.body.expectedDate);
+    assert.equal(saved.body.marketReceivedAt, receivedAt);
+    assert.match(manual.body.source, /일일 저장본/);
+    assert.equal(manual.body.bars[0].close, 100);
+    assert.equal(manual.body.adjustment, 'split-adjusted');
+    assert.equal(manual.headers['Cache-Control'], 'no-store');
+    assert.ok(!JSON.stringify({manual, saved}).includes(settings.token));
+    const checked = await call(validate, {symbol:'UGI'});
+    assert.deepEqual(checked.body, {symbol:'UGI',name:original.name,type:'CS'});
+    assert.equal((await call(validate, {symbol:'MISSING'})).statusCode, 404);
+    const compared = await call(frame, {symbol:'UGI',through:days[2]});
+    assert.deepEqual(compared.body.context, expectedFrame);
+    assert.equal((await call(frame, {symbol:'UGI',through:days[1]})).statusCode, 404);
+    const beforePublish = await call(quote, {symbol:'UGI',through:days[3]});
+    assert.equal(beforePublish.statusCode, 404);
+    assert.equal((await call(quote, {symbol:'UGI',through:'2026-02-30'})).statusCode, 400);
+    const next = {...original, bars: [...original.bars, {date: days[3],open:50,high:52,low:49,close:51,volume:200}],
+      splits: [{date: days[3], from:1, to:2}]};
+    const nextMeta = await store.stage({dates: days, history: new Map([['UGI', next]]),receivedAt});
+    assert.equal((await call(quote, {symbol:'UGI'})).body.through, days[2]);
+    await store.publish(nextMeta, {expectedDate:days[3],total:1,buy:[]}, {}, meta);
+    const latest = await call(quote, {symbol:'UGI'});
+    assert.deepEqual(latest.body.bars.map(b => b.close), [50,50,50,51]);
+    assert.equal(latest.body.bars[0].volume, 200);
+    const pinned = await call(quote, {symbol:'UGI',through:days[2],strategy:'breakout'});
+    assert.equal(pinned.body.adjustment, 'split-and-dividend-adjusted');
+    assert.deepEqual(pinned.body.bars.map(b => b.close), [96,100,100]);
+    assert.equal((await call(quote, {symbol:'UGI',through:'2026-11-07'})).statusCode, 404);
+    assert.equal((await call(quote, {symbol:'MISSING'})).statusCode, 404);
+    await assert.rejects(store.publish(meta,{expectedDate:days[2],total:1,buy:[]},{},nextMeta), /게시 순서/);
+  } finally {
+    globalThis.fetch = originalFetch;
+    for (const [name, value] of Object.entries(previousEnv)) {
+      if (value === undefined) delete process.env[name];
+      else process.env[name] = value;
+    }
+  }
 });

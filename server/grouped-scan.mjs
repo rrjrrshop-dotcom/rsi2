@@ -27,11 +27,17 @@ export async function scanGrouped({symbols, dates, getDaily, onProgress = () => 
   onProgress({date,completed:++count,total:dates.length});
  }
  const [{major, all}, dividends] = await Promise.all([getRecommendationCandidates(), getBreakoutDividends()]);
+ return scanHistories({symbols: universe, dates, history, major, all, dividends, recommendationMembership});
+}
+
+export function scanHistories({symbols, dates, history, major, all, dividends, recommendationMembership}) {
+ const scanSymbols = new Set(symbols);
  const expectedDate = dates.at(-1);
  const records = [];
  const preliminary = {trend: [], box: [], thousand: [], breakout: [], skipped: 0,
   recommendations: emptyRankings(), marketRecommendations: emptyRankings(), breakoutAdjustmentErrors: 0};
- for (const [symbol, bars] of history) {
+ for (const symbol of new Set([...symbols, ...all])) {
+  const bars = history.get(symbol) ?? [];
   const originalScan = scanSymbols.has(symbol);
   const indexes = recommendationMembership.get(symbol);
   const verifiedIndexes = Array.isArray(indexes) && indexes.every(index => Object.hasOwn(RECOMMENDATION_INDEXES, index)) ? indexes : [];
@@ -89,5 +95,5 @@ export async function scanGrouped({symbols, dates, getDaily, onProgress = () => 
  preliminary.box.sort((a,b)=>Number(b.close>b.upper&&b.aboveSma)-Number(a.close>a.upper&&a.aboveSma)||b.volumeRatio-a.volumeRatio||a.symbol.localeCompare(b.symbol));
  for(const k of ['trend','box','thousand','breakout'])preliminary[k]=preliminary[k].slice(0,10);
  const group=status=>records.filter(x=>x.status===status);
- return {expectedDate,total:universe.length,marketSessions:dates.length,buy:group('buy'),waiting:group('wait'),insufficient:group('insufficient'),stale:group('stale'),preliminary};
+ return {expectedDate,total:scanSymbols.size,marketSessions:dates.length,buy:group('buy'),waiting:group('wait'),insufficient:group('insufficient'),stale:group('stale'),preliminary};
 }
