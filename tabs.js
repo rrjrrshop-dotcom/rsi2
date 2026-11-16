@@ -21,3 +21,16 @@ for (const tab of tabs) {
     activateStrategy(tabs[next].dataset.strategy, true);
   });
 }
+
+function openSettingsLink() {
+  const id = location.hash.slice(1);
+  if (!['notification-settings','enablePush','holdings-settings'].includes(id)) return;
+  const panel = document.getElementById(id).closest('details');
+  activateStrategy('help');
+  panel.open = true;
+  requestAnimationFrame(() => panel.scrollIntoView({block:'start'}));
+}
+if (typeof window !== 'undefined') {
+  window.addEventListener('hashchange',openSettingsLink);
+  openSettingsLink();
+}

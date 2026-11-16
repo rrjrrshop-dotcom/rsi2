@@ -185,13 +185,74 @@ async function refreshRecommendations(id, reload = false) {
   if (requestVersion === state.version) status.textContent = error.message;
  }
 }
+function scanPanel(id) {
+ const panel=el('details');
+ panel.className='panel extra';
+ const summary=el('summary');
+ summary.append(el('h2','자동 검색 결과'));
+ const about=el('p',id==='rsi2'?'저장된 RSI2 매수 신호를 표시합니다.':'이 전략의 저장된 자동 검색 후보 목록입니다.');
+ const controls=el('div');
+ controls.className='scan-controls';
+ const codeInput=el('input');
+ codeInput.type='password';codeInput.autocomplete='off';codeInput.placeholder='개인 등록 코드';
+ codeInput.setAttribute('aria-label','자동 검색 개인 등록 코드');
+ const load=el('button','검색 결과 불러오기'), prev=el('button','이전'), next=el('button','다음');
+ for (const button of [load,prev,next]) button.type='button';
+ prev.hidden=next.hidden=true;
+ const status=el('p','저장된 최근 검색 결과를 불러옵니다.');
+ status.className='note';status.setAttribute('role','status');
+ const list=el('div');
+ list.className='top-results scan-list';
+ controls.append(codeInput,load,prev,next);
+ panel.append(summary,about,controls,status,list);
+ let page=0;
+ async function readPage(requested) {
+  const code=codeInput.value.trim()||codeFor(id);
+  if (!code) {status.textContent='개인 등록 코드를 입력하세요.';codeInput.focus();return}
+  load.disabled=prev.disabled=next.disabled=true;
+  status.textContent='저장된 검색 결과를 읽는 중입니다…';
+  try {
+   const url=new URLSearchParams({strategy:id,page:String(requested)});
+   const response=await fetch('/api/results?'+url,{headers:{Authorization:'Bearer '+code},cache:'no-store'});
+   const result=await response.json();
+   if (!response.ok) {
+    if (response.status===401) {
+     try{localStorage.removeItem(codeKey)}catch{}
+     codeInput.hidden=false;
+    }
+    throw Error(result.error||'검색 결과를 불러오지 못했습니다.');
+   }
+   try{localStorage.setItem(codeKey,code)}catch{}
+   codeInput.value='';codeInput.hidden=true;page=result.page;
+   list.replaceChildren();
+   for (const row of result.rows) {
+    const item=el('button');
+    item.type='button';item.className='recommend-open';
+    const graphic=renderScoreGraphic(row,{compact:true});
+    graphic.prepend(el('small','스코어'));
+    item.append(el('strong',row.symbol),graphic);
+    item.onclick=()=>openDetail(id,row.symbol,row);
+    list.append(item);
+   }
+   status.textContent=result.rows.length
+    ? `${result.expectedDate} 확정 일봉 · ${result.total}종목 · ${page+1}/${result.pages} 페이지${result.staleWarning?' · 오래된 결과 주의':''}`
+    : `${result.expectedDate} 확정 일봉 · 검색 결과 없음`;
+   prev.hidden=page===0;
+   next.hidden=page+1>=result.pages;
+  } catch(error){status.textContent=error.message}
+  finally{load.disabled=prev.disabled=next.disabled=false}
+ }
+ codeInput.hidden=Boolean(codeFor(id));
+ load.onclick=()=>readPage(0);prev.onclick=()=>readPage(page-1);next.onclick=()=>readPage(page+1);
+ return panel;
+}
 for(const id of ids){const panel=$('strategy-'+id),heading=panel.querySelector('.strategy-head'),recommend=el('section'),shared=el('section'),backButton=el('button','← 목록으로');recommend.className='panel recommend-panel';shared.className='panel';backButton.className='detail-back secondary';backButton.type='button';backButton.hidden=true;backButton.onclick=()=>back(id);recommend.innerHTML = `<h2>추천 상위 ${RECOMMENDATION_LIMIT}개</h2><p class="recommend-status note" role="status">최근 검색 결과를 확인합니다.</p><div id="recommend-items-${id}" class="recommend-items top-results"></div><button type="button" class="recommend-refresh secondary">추천 불러오기</button>`;
  recommendationState.set(id, {scope: 'major', version: 0});
  scopePicker(id, recommend);
  const scoreLabel = el('p', scoreName(id) + ' · 충족 조건이 많은 순');
  scoreLabel.className = 'recommend-order note';
  recommend.querySelector('.recommend-items').before(scoreLabel);
- shared.innerHTML='<h2>관심종목 <span class="watch-count"></span></h2><form class="row watch-form"><input class="watch-code" type="password" autocomplete="off" placeholder="개인 등록 코드" aria-label="개인 등록 코드"><input class="watch-symbol" required pattern="[A-Za-z0-9.\\-]{1,15}" placeholder="티커 입력" aria-label="관심종목 티커"><button>등록</button></form><p class="watch-status note" role="status"></p><div class="watch-items top-results"></div><p class="note">관심종목은 이 브라우저에만 저장되며 모든 탭에서 공유됩니다.</p>';const chartSection=$(cfg[id].chart).closest('section'),imageButton=el('button','차트 이미지 보기');imageButton.type='button';imageButton.className='secondary';imageButton.onclick=()=>{const canvas=$(cfg[id].chart),popup=document.createElement('dialog'),img=document.createElement('img'),close=el('button','닫기');img.src=canvas.toDataURL('image/png');img.alt='선택 종목의 차트 이미지';img.style.cssText='display:block;width:100%;height:auto';popup.className='chart-modal';close.onclick=()=>{popup.close();popup.remove()};popup.append(close,img);document.body.append(popup);popup.showModal()};chartSection.append(imageButton);panel.insertBefore(backButton,heading.nextSibling);panel.insertBefore(recommend,backButton.nextSibling);panel.insertBefore(shared,recommend.nextSibling);
+ shared.innerHTML='<h2>관심종목 <span class="watch-count"></span></h2><form class="row watch-form"><input class="watch-code" type="password" autocomplete="off" placeholder="개인 등록 코드" aria-label="개인 등록 코드"><input class="watch-symbol" required pattern="[A-Za-z0-9.\\-]{1,15}" placeholder="티커 입력" aria-label="관심종목 티커"><button>등록</button></form><p class="watch-status note" role="status"></p><div class="watch-items top-results"></div><p class="note">관심종목은 이 브라우저에만 저장되며 모든 탭에서 공유됩니다.</p>';const chartSection=$(cfg[id].chart).closest('section'),imageButton=el('button','차트 이미지 보기');imageButton.type='button';imageButton.className='secondary';imageButton.onclick=()=>{const canvas=$(cfg[id].chart),popup=document.createElement('dialog'),img=document.createElement('img'),close=el('button','닫기');img.src=canvas.toDataURL('image/png');img.alt='선택 종목의 차트 이미지';img.style.cssText='display:block;width:100%;height:auto';popup.className='chart-modal';close.onclick=()=>{popup.close();popup.remove()};popup.append(close,img);document.body.append(popup);popup.showModal()};chartSection.append(imageButton);panel.insertBefore(backButton,heading.nextSibling);panel.insertBefore(recommend,backButton.nextSibling);panel.insertBefore(shared,recommend.nextSibling);panel.insertBefore(scanPanel(id),shared.nextSibling);
  // Preserve previous controls and result containers for existing scripts, but replace their old ranked lists.
  for(const old of [id==='rsi2'?$('topResults'):$(id==='1000'?'thousandList':id+'List')])if(old)old.closest('section').hidden=true;
  const form=shared.querySelector('.watch-form'),field=shared.querySelector('.watch-symbol'),codeInput=shared.querySelector('.watch-code');try{if(localStorage.getItem(codeKey))codeInput.hidden=true}catch{}form.onsubmit=async e=>{e.preventDefault();const symbol=field.value.trim().toUpperCase(),status=shared.querySelector('.watch-status');if(watch.includes(symbol)){status.textContent='이미 등록된 종목입니다.';return}if(watch.length>=10){status.textContent='관심종목은 최대 10개입니다.';return}const code=localStorage.getItem(codeKey)||codeInput.value.trim()||$(cfg[id].code).value.trim();if(!code){status.textContent='개인 등록 코드를 입력하세요.';return}const submit=form.querySelector('button');submit.disabled=true;status.textContent='현재 상장 종목인지 확인하는 중…';try{const response=await fetch('/api/validate-symbol?symbol='+encodeURIComponent(symbol),{headers:{Authorization:'Bearer '+code},cache:'no-store'}),data=await response.json();if(!response.ok)throw Error(data.error||'종목을 확인하지 못했습니다.');if(watch.includes(symbol)||watch.length>=10)throw Error('이미 등록되었거나 10개 한도에 도달했습니다.');watch.push(symbol);save();localStorage.setItem(codeKey,code);codeInput.hidden=true;field.value='';await refreshWatch(id);refreshRecommendations(id)}catch(e){status.textContent=e.message}finally{submit.disabled=false}};
