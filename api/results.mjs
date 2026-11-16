@@ -2,7 +2,7 @@ import {easternDate, dataAgeDays} from '../server/trading-calendar.mjs';
 import {constantTimeEqual} from '../server/subscriptions.mjs';
 import {marketCache, pricesThrough, dividendsThrough} from '../server/market-cache.mjs';
 import {adjustBreakoutBars, BREAKOUT_ADJUSTMENT} from '../breakout.mjs';
-import {scoreAnalysis, scoreStrategy} from '../scores.mjs';
+import {compareScores, scoreAnalysis, scoreStrategy, THOUSAND_SCORE_TOTAL} from '../scores.mjs';
 import {scoreOutOf100} from '../score-scale.mjs';
 import {resultStore} from '../server/result-store.mjs';
 import {hasCurrentRecommendationScreen, RECOMMENDATION_SCOPES} from '../recommendation-policy.mjs';
@@ -41,6 +41,32 @@ async function scoredResults(result, strategy, page, res) {
     staleWarning:dataAgeDays(meta.through,easternDate())>7});
 }
 
+// An earlier batch saved the old seven-condition scores alongside the shortlist.
+async function refreshStoredThousand(result) {
+  const lists = Object.values(RECOMMENDATION_SCOPES)
+    .map(({list}) => result.preliminary[list])
+    .filter(ranking => ranking?.['1000']?.some(row => row.total !== THOUSAND_SCORE_TOTAL));
+  if (!lists.length) return;
+  const store = marketCache();
+  const meta = await store.current();
+  const legacy = new Set(lists.flatMap(ranking => ranking['1000']
+    .filter(row => row.total !== THOUSAND_SCORE_TOTAL).map(row => row.symbol)));
+  const scores = new Map(await Promise.all([...legacy].map(async symbol => {
+    if (meta?.through !== result.expectedDate) return [symbol, null];
+    const record = await store.record(meta, symbol);
+    if (record?.bars.at(-1)?.date !== meta.through) return [symbol, null];
+    try { return [symbol, scoreStrategy('1000', pricesThrough(record, meta.through), symbol)]; }
+    catch { return [symbol, null]; }
+  })));
+  for (const ranking of lists) {
+    ranking['1000'] = ranking['1000'].flatMap(row => {
+      if (row.total === THOUSAND_SCORE_TOTAL) return [row];
+      const score = scores.get(row.symbol);
+      return score && row.date === result.expectedDate ? [{...row, ...score}] : [];
+    }).sort(compareScores);
+  }
+}
+
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
   if (req.method !== 'GET') return res.status(405).json({error: 'GET 요청만 지원합니다.'});
@@ -62,6 +88,7 @@ export default async function handler(req, res) {
       for (const [scope, {list}] of Object.entries(RECOMMENDATION_SCOPES)) {
         if (!hasCurrentRecommendationScreen(result, scope)) result.preliminary[list] = {};
       }
+      await refreshStoredThousand(result);
     }
     const ageDays = dataAgeDays(result.expectedDate, easternDate());
     return res.status(200).json({...result, ageDays, staleWarning: ageDays > 7});

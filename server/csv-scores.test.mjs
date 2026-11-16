@@ -8,7 +8,7 @@ const data=Array.from({length:350},(_,i)=>{
  return [day,'SPY',close,close+1,close-1,close,200].map(String);
 });
 test('the same local CSV produces each strategy score',()=>{
- for(const [id,total] of Object.entries({'1000':7,trend:8,box:4,rsi2:2,breakout:2})){
+ for(const [id,total] of Object.entries({'1000':9,trend:8,box:4,rsi2:2,breakout:2})){
   const [row]=csvScores(id,[HEAD,...data]);
   assert.equal(row.score?.total,total,id+' '+row.error);
   assert.equal(row.date,data.at(-1)[0]);
