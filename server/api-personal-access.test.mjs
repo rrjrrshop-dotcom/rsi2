@@ -109,6 +109,27 @@ test('private saved market history drives all quote and recommendation requests'
     assert.equal((await call(quote, {symbol:'UGI',through:'2026-11-07'})).statusCode, 404);
     assert.equal((await call(quote, {symbol:'MISSING'})).statusCode, 404);
     await assert.rejects(store.publish(meta,{expectedDate:days[2],total:1,buy:[]},{},nextMeta), /게시 순서/);
+
+    const scanDays = Array.from({length: 60}, (_, i) => new Date(Date.UTC(2026, 10, 10-59+i)).toISOString().slice(0,10));
+    const scanDate = scanDays.at(-1);
+    const symbols = Array.from({length: 11}, (_, i) => 'LOW'+i);
+    const history = new Map([...symbols, 'HIGH'].map(symbol => [symbol, {...original, dividends: [],
+      bars: scanDays.map((date, i) => ({date, open:100, low:99, high:symbol === 'HIGH' && i === 59 ? 105 : 102,
+        close:symbol === 'HIGH' && i === 59 ? 105 : 100, volume:1000})),
+    }]));
+    const scanMeta = await store.stage({dates:scanDays,history,receivedAt});
+    const candidates = ['MISSING', ...symbols, 'HIGH'].map(symbol => ({symbol,date:scanDate}));
+    const buy = [{symbol:'RSI',date:scanDate,close:110,sma200:90,sma5:120,rsi:4,exit:false}];
+    await store.publish(scanMeta,{expectedDate:scanDate,total:13,buy,preliminary:{breakout:candidates}},{},nextMeta);
+    const first = await call(results,{strategy:'breakout',page:0});
+    const second = await call(results,{strategy:'breakout',page:1});
+    assert.equal(first.statusCode,200);
+    assert.equal(first.body.pages,2);
+    assert.equal(first.body.rows[0].passed,2);
+    assert.deepEqual(first.body.rows.map(row => row.symbol),['HIGH', ...symbols]);
+    assert.deepEqual(second.body.rows,[{symbol:'MISSING'}]);
+    const rsi = await call(results,{strategy:'rsi2'});
+    assert.equal(rsi.body.rows[0].passed,2);
   } finally {
     globalThis.fetch = originalFetch;
     for (const [name, value] of Object.entries(previousEnv)) {

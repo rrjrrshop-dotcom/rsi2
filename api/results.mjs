@@ -2,7 +2,8 @@ import {easternDate, dataAgeDays} from '../server/trading-calendar.mjs';
 import {constantTimeEqual} from '../server/subscriptions.mjs';
 import {marketCache, pricesThrough, dividendsThrough} from '../server/market-cache.mjs';
 import {adjustBreakoutBars, BREAKOUT_ADJUSTMENT} from '../breakout.mjs';
-import {scoreStrategy} from '../scores.mjs';
+import {scoreAnalysis, scoreStrategy} from '../scores.mjs';
+import {scoreOutOf100} from '../score-scale.mjs';
 import {resultStore} from '../server/result-store.mjs';
 import {hasCurrentRecommendationScreen, RECOMMENDATION_SCOPES} from '../recommendation-policy.mjs';
 
@@ -17,7 +18,13 @@ async function scoredResults(result, strategy, page, res) {
   }
   const source = strategy === 'rsi2' ? result.buy : result.preliminary?.[lists[strategy]];
   const candidates = (source ?? []).filter(row => row.date === meta.through);
-  const rows = await Promise.all(candidates.slice(page*pageSize,(page+1)*pageSize).map(async ({symbol}) => {
+  const rows = await Promise.all(candidates.map(async candidate => {
+    const {symbol} = candidate;
+    if (strategy === 'rsi2' &&
+        [candidate.close, candidate.sma200, candidate.sma5, candidate.rsi].every(Number.isFinite) &&
+        typeof candidate.exit === 'boolean') {
+      return {symbol,date:meta.through,...scoreAnalysis(strategy,candidate)};
+    }
     const record = await store.record(meta,symbol);
     if (record?.bars.at(-1)?.date !== meta.through) return {symbol};
     let bars = pricesThrough(record,meta.through);
@@ -29,7 +36,8 @@ async function scoredResults(result, strategy, page, res) {
       return {symbol};
     }
   }));
-  return res.status(200).json({rows,expectedDate:meta.through,page,pages:Math.ceil(candidates.length/pageSize),total:candidates.length,
+  rows.sort((left,right) => (scoreOutOf100(right) ?? -1) - (scoreOutOf100(left) ?? -1));
+  return res.status(200).json({rows:rows.slice(page*pageSize,(page+1)*pageSize),expectedDate:meta.through,page,pages:Math.ceil(rows.length/pageSize),total:rows.length,
     staleWarning:dataAgeDays(meta.through,easternDate())>7});
 }
 

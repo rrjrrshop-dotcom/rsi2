@@ -190,7 +190,7 @@ function scanPanel(id) {
  panel.className='panel extra';
  const summary=el('summary');
  summary.append(el('h2','자동 검색 결과'));
- const about=el('p',id==='rsi2'?'저장된 RSI2 매수 신호를 표시합니다.':'이 전략의 저장된 자동 검색 후보 목록입니다.');
+ const about=el('p',id==='rsi2'?'저장된 RSI2 매수 신호를 스코어가 높은 순으로 표시합니다.':'이 전략의 저장된 자동 검색 후보를 스코어가 높은 순으로 표시합니다.');
  const controls=el('div');
  controls.className='scan-controls';
  const codeInput=el('input');
