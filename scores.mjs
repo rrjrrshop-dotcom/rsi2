@@ -25,6 +25,7 @@ export function scoreAnalysis(id, result) {
         check(name, passed, comparison(left, right, name.startsWith('MACD') ? 3 : 2))), {
         note: estimate.score === null ? '' : scoreName(id) + ' · 가중 추정 ' + estimate.score + '/9점',
         tieBreaker: estimate.score ?? 0,
+        exitConditions: [check('하이킨아시 종가 < EMA55', result.close < result.ema55, comparison(result.close,result.ema55))],
       });
     }
     case 'trend': {
@@ -39,10 +40,12 @@ export function scoreAnalysis(id, result) {
         ['52주 고점 대비 25% 이내', '고점 ' + number(high) + ' · ' + percent((close / high - 1) * 100)],
         ['SPY 대비 가중 상대강도 우위', conditions[7] === null ? '가중 산식 미확인' : 'SPY는 비교 기준과 동일'],
       ];
-      return assessment(id, items.map(([label, value], i) => check(label, conditions[i], value)));
+      return assessment(id, items.map(([label, value], i) => check(label, conditions[i], value)), {
+        exitConditions: [check('종가 < 200일선 (이탈 참고)', close < s200, comparison(close,s200))],
+      });
     }
     case 'box': {
-      const {close, sma30, priorSma30, rising30, upper, boxSource, volumeRatio} = result;
+      const {close, sma30, priorSma30, rising30, upper, lower, boxSource, volumeRatio} = result;
       const boxName = boxSource === 'manual' ? '직접 입력한 박스' : '추정 박스';
       return assessment(id, [
         check('종가 > 30주선', close > sma30, comparison(close, sma30)),
@@ -50,7 +53,9 @@ export function scoreAnalysis(id, result) {
         check('종가 > ' + boxName + ' 상단', upper === null ? null : close > upper, comparison(close, upper)),
         check('거래량이 직전 50일 평균의 2배 이상', volumeRatio === null ? null : volumeRatio >= 2,
           volumeRatio === null ? '거래량 자료 부족' : number(volumeRatio, 1) + '배'),
-      ], {tieBreaker: volumeRatio ?? 0});
+      ], {tieBreaker: volumeRatio ?? 0,
+        exitConditions: [check('종가 < ' + boxName + ' 하단', lower == null ? null : close < lower, comparison(close,lower))],
+      });
     }
     case 'rsi2': {
       if (result.status === 'insufficient') throw Error('일봉이 최소 200개 필요합니다.');

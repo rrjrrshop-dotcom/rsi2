@@ -1,5 +1,5 @@
 /** State persisted in private Redis; only fixed logical keys are permitted. */
-const allowed=new Set(['rsi2:holdings-symbols','rsi2:notification-state']);
+const allowed=new Set(['rsi2:holdings-symbols','rsi2:notification-state','rsi2:alert-preferences','rsi2:alert-deliveries']);
 export function privateState({url,token,fetcher=fetch}){
  let base;try{base=new URL(url)}catch{throw Error('state storage not configured')}
  if(base.protocol!=='https:'||!base.hostname.endsWith('.upstash.io')||!token)throw Error('state storage not configured');

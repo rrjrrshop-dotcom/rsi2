@@ -25,6 +25,10 @@ jobs:
       VAPID_PUBLIC_KEY: ${{ secrets.VAPID_PUBLIC_KEY }}
       VAPID_PRIVATE_KEY: ${{ secrets.VAPID_PRIVATE_KEY }}
       VAPID_SUBJECT: ${{ secrets.VAPID_SUBJECT }}
+      TWILIO_ACCOUNT_SID: ${{ secrets.TWILIO_ACCOUNT_SID }}
+      TWILIO_AUTH_TOKEN: ${{ secrets.TWILIO_AUTH_TOKEN }}
+      TWILIO_FROM_NUMBER: ${{ secrets.TWILIO_FROM_NUMBER }}
+      TWILIO_VERIFIED_TO: ${{ secrets.TWILIO_VERIFIED_TO }}
       DOW_CONSTITUENTS_URL: ${{ secrets.DOW_CONSTITUENTS_URL }}
       SP500_CONSTITUENTS_URL: ${{ secrets.SP500_CONSTITUENTS_URL }}
       NASDAQ100_CONSTITUENTS_URL: ${{ secrets.NASDAQ100_CONSTITUENTS_URL }}
@@ -55,6 +59,5 @@ jobs:
       - name: Save the market close and calculate recommendations
         if: steps.pending.outputs.pending == 'true'
         run: node scripts/scan.mjs universe.json auto scan-result.json
-      - name: Notify registered devices
-        if: ${{ hashFiles('scan-result.json') != '' }}
-        run: node scripts/notify.mjs scan-result.json universe.json
+      - name: Notify registered devices and verified phone
+        run: node scripts/notify.mjs
