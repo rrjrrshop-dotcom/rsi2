@@ -7,12 +7,39 @@ function node(tag,text) {
  return element;
 }
 
+function csvDownload(label, filename, rows) {
+ const link=node('a',label);
+ const csv=rows.map(row=>row.join(',')).join('\r\n')+'\r\n';
+ link.href='data:text/csv;charset=utf-8,'+encodeURIComponent(csv);
+ link.download=filename;
+ return link;
+}
+
+function exampleBars(closeOnly) {
+ const rows=[];
+ const date=new Date(Date.UTC(2025,0,2));
+ while (rows.length<260) {
+  const weekday=date.getUTCDay();
+  if (weekday!==0&&weekday!==6) {
+   const day=date.toISOString().slice(0,10);
+   const close=100+rows.length+(rows.length%5);
+   rows.push(closeOnly
+    ? [day,'DEMO',close]
+    : [day,'DEMO',close-1,close+2,close-3,close,100000+rows.length*100]);
+  }
+  date.setUTCDate(date.getUTCDate()+1);
+ }
+ return rows;
+}
+
 function templateControls(strategy) {
  const group=node('div');
- const columns=strategy==='rsi2'?['Date','Symbol','Close']:['Date','Symbol','Open','High','Low','Close','Volume'];
- const link=node('a','CSV 양식 다운로드');
- link.href='data:text/csv;charset=utf-8,'+encodeURIComponent(columns.join(',')+'\r\n');
- link.download='stocking-'+strategy+'-template.csv';
+ const closeOnly=strategy==='rsi2';
+ const columns=closeOnly?['Date','Symbol','Close']:['Date','Symbol','Open','High','Low','Close','Volume'];
+ const template=csvDownload('CSV 양식 다운로드','stocking-'+strategy+'-template.csv',[columns]);
+ const example=csvDownload('예제 CSV 다운로드','stocking-'+strategy+'-example.csv',[columns,...exampleBars(closeOnly)]);
+ const exampleNote=node('p','예제에는 가상 종목 DEMO의 일봉 260개가 있습니다. 내려받은 예제를 아래에서 선택하면 스코어 계산을 연습할 수 있습니다.');
+ exampleNote.className='note';
  const help=node('p',strategy==='rsi2'
   ? 'Date는 거래일(YYYY-MM-DD), Symbol은 티커, Close는 종가입니다.'
   : 'Date는 거래일(YYYY-MM-DD), Symbol은 티커입니다. Open·High·Low·Close는 시가·고가·저가·종가, Volume은 거래량입니다.');
@@ -20,7 +47,10 @@ function templateControls(strategy) {
  const rows=node('p','거래일마다 한 줄을 입력하세요. 여러 종목을 넣을 때는 각 행에 티커를 입력하세요.'+
   (strategy==='box'?' 거래량이 빠진 행이 있으면 거래량 관련 조건이 미확인으로 표시될 수 있습니다.':''));
  rows.className='note';
- group.append(link,help,rows);
+ const links=node('div');
+ links.className='row';
+ links.append(template,example);
+ group.append(links,exampleNote,help,rows);
  return group;
 }
 
