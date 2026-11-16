@@ -18,12 +18,12 @@ const assert=require('node:assert/strict');
   assert.deepEqual(await page.locator('#strategy-help details summary').allTextContents().then(x=>x.slice(0,2)),['1. 휴대폰 알림 등록','2. 보유 종목']);
   await page.goto('http://127.0.0.1:8149/#holdings-settings');
   const img=await page.evaluate(()=>{
-   const canvas=document.createElement('canvas');canvas.width=1000;canvas.height=220;
+   const canvas=document.createElement('canvas');canvas.width=1000;canvas.height=270;
    const ctx=canvas.getContext('2d');ctx.fillStyle='white';ctx.fillRect(0,0,1000,220);
    ctx.fillStyle='black';ctx.font='26px sans-serif';
-   for(const [text,x,y] of [['Ticker',18,60],['Company',105,60],['Transaction',455,60],['Shares',670,60],['Cost',742,60],
-    ['CRM',42,110],['Salesforce',105,110],['Buy',490,110],['28',680,110],['186.26',742,110],
-    ['NVDA',42,160],['NVIDIA',105,160],['Buy',490,160],['12',680,160],['217.55',742,160]])ctx.fillText(text,x,y);
+   for(const [text,x,y] of [['Ticker',18,60],['Company',185,60],['Transaction',455,60],['Shares',670,60],['Cost',742,60],
+    ['CRM',42,110],['Salesforce',185,110],['Buy',490,110],['28',680,110],['186.26',742,110],
+    ['NVDA',42,160],['NVIDIA',185,160],['Buy',490,160],['12',680,160],['217.55',742,160]])ctx.fillText(text,x,y);
    return canvas.toDataURL().split(',')[1];
   });
   await page.locator('#holdingsImages').setInputFiles({name:'fictional-portfolio.png',mimeType:'image/png',buffer:Buffer.from(img,'base64')});
