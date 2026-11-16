@@ -1,0 +1,45 @@
+name: Verify holdings scores and alert registration
+on:
+  push:
+    branches: [verify-stock-alerts]
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm test
+      - name: Verify holdings score against saved market history
+        env:
+          UPSTASH_REDIS_REST_URL: ${{ secrets.UPSTASH_REDIS_REST_URL }}
+          UPSTASH_REDIS_REST_TOKEN: ${{ secrets.UPSTASH_REDIS_REST_TOKEN }}
+        run: |
+          node --input-type=module <<'JS'
+          import assert from 'node:assert/strict';
+          import handler from './api/holding-scores.mjs';
+          import {strategies} from './server/holding-scores.mjs';
+          process.env.PAIRING_SECRET='local-verification';
+          const original=fetch;
+          globalThis.fetch=(url,options)=>{
+           assert.match(new URL(url).hostname,/\.upstash\.io$/);
+           assert.ok(['GET','HGET'].includes(JSON.parse(options.body)[0]));
+           return original(url,options);
+          };
+          const res={setHeader(){},status(code){this.code=code;return this},json(body){return {status:this.code,body}}};
+          const result=await handler({method:'POST',headers:{authorization:'Bearer local-verification'},body:{symbols:['SPY']}},res);
+          assert.equal(result.status,200);
+          assert.deepEqual(Object.keys(result.body.rows[0].scores),strategies);
+          for(const score of Object.values(result.body.rows[0].scores))assert.ok(score.exitConditions.length);
+          console.log('All five holding scores and exit criteria read from saved market history.');
+          JS
+      - run: npm install --no-save playwright && npx playwright install --with-deps chromium
+      - run: |
+          python3 -m http.server 8149 --bind 127.0.0.1 >/tmp/stocking-alert-server.log 2>&1 &
+          node .github/verify-stock-alerts.cjs
