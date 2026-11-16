@@ -32,13 +32,15 @@ export function readHoldingsImage(tsv, width) {
   else lines.push({y:word.y,h:word.h,words:[word]});
  }
  for (const row of lines) row.words.sort((a,b) => a.x-b.x);
- const header = lines.find(row => ['ticker','shares','cost'].every(key => row.words.some(w => w.text.toLowerCase()===key)));
+ const header = lines.find(row => row.words.some(w => /^ticker$/i.test(w.text)) &&
+  row.words.some(w => /^(company|transaction|shares|cost)/i.test(w.text)));
  if (header) {
-  const x = key => header.words.find(w => w.text.toLowerCase()===key).x;
+  const x = key => header.words.find(w => w.text.toLowerCase()===key)?.x;
   const shares = x('shares'), cost = x('cost'), company = x('company') || x('ticker')+.1;
   return lines.filter(row => row.y > header.y && row.words.some(w => /^buy$/i.test(w.text))).flatMap(row => {
    const symbol = inColumn(row,0,company-.015).map(w => w.text).findLast(s => ticker.test(s) && s.length > 1);
    if (!symbol) return [];
+   if (shares===undefined || cost===undefined) return [{symbol,qty:null,price:null,source:'수량·매입가 확인 필요'}];
    let qty = readNumber(row, shares-.042, (shares+cost)/2);
    const price = readNumber(row,(shares+cost)/2,cost+.025);
    const total = readNumber(row,cost+.025,cost+.091);
