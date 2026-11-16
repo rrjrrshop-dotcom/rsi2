@@ -25,3 +25,33 @@ test('normalize a Korean mobile or international SMS number without permitting e
  assert.equal(normalizePhone('+1 (202) 555-0101'),'+12025550101');
  assert.throws(()=>normalizePhone('010-1234-5678;999'),/전화번호/);
 });
+
+test('holding entry is inclusive at 90 and re-arms after a lower score', () => {
+ const holdings=new Set(['ABC']), watch=new Set();
+ const result={expectedDate:'2026-11-16'};
+ function run(passed, previous, total=10){
+  const scores=passed===null?{}:{trend:{passed,total,exitConditions:[]}};
+  return alertPlan({result,rows:[{symbol:'ABC',scores}],holdings,watch,previous});
+ }
+ const below=run(7,undefined,8);
+ assert.deepEqual(below.jobs,[]);
+ const first=run(9,below.next);
+ assert.deepEqual(first.jobs.map(job=>job.type),['holdingEntry']);
+ assert.match(first.jobs[0].body,/ABC trend 9\/10점 · 90점/);
+ assert.deepEqual(run(10,first.next).jobs,[]);
+ const missing=run(null,first.next);
+ assert.deepEqual(run(10,missing.next).jobs,[]);
+ const cleared=run(8,first.next);
+ assert.match(run(10,cleared.next).jobs[0].body,/100점/);
+});
+
+test('holding entry keeps every strategy and skips unregistered symbols', () => {
+ const scores=Object.fromEntries(['1000','trend','box','rsi2','breakout']
+  .map(strategy=>[strategy,{passed:2,total:2,exitConditions:[]}]));
+ const {jobs}=alertPlan({result:{expectedDate:'2026-11-16'},
+  rows:[{symbol:'ABC',scores},{symbol:'XYZ',scores}],holdings:new Set(['ABC']),watch:new Set()});
+ assert.deepEqual(jobs.map(job=>job.id),['holdingEntry-0','holdingEntry-1']);
+ const text=jobs.map(job=>job.body).join(' ');
+ for(const caption of ['1000','trend','box','RSI2','breakout'])assert.ok(text.includes('ABC '+caption+' '));
+ assert.ok(!text.includes('XYZ'));
+});

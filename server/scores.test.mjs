@@ -1,3 +1,5 @@
+import {scoreText} from '../score-card.mjs';
+import {scoreOutOf100} from '../score-scale.mjs';
 import {test} from 'node:test';import assert from 'node:assert/strict';import {scoreAnalysis,scoreStrategy} from '../scores.mjs';
 const bars=()=>Array.from({length:270},(_,i)=>{const d=new Date(Date.UTC(2025,0,i+1)).toISOString().slice(0,10),p=100+i*.1;return {date:d,open:p,high:p+1,low:p-1,close:p,volume:1000}});
 test('each tab reports the applicable entry conditions with a consistent denominator', () => {
@@ -17,3 +19,11 @@ test('an unverified relative strength stays distinct from failure and an RSI exi
   assert.equal(rsi.exitConditions[0].passed, true);
 });
 test('missing history cannot create a score',()=>assert.throws(()=>scoreStrategy('rsi2',bars().slice(-10))));
+
+test('fraction and 100-point labels work for existing score objects', () => {
+  assert.equal(scoreText({passed:8,total:8}), '8/8점 · 100점');
+  assert.equal(scoreText({passed:7,total:8}), '7/8점 · 87.5점');
+  assert.equal(scoreText({passed:6,total:7}), '6/7점 · 85.7점');
+  assert.equal(scoreOutOf100({passed:0,total:2}), 0);
+  assert.equal(scoreText({passed:0,total:0}), '점수 확인 불가');
+});

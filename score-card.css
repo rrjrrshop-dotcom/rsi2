@@ -29,7 +29,7 @@
 
 .condition-section-title { margin-top: 13px; }
 .score-graphic { display: inline-grid; gap: 5px; min-width: 82px; }
-.score-fraction { font-size: 1.3rem; font-weight: 800; line-height: 1.16; font-variant-numeric: tabular-nums; }
+.score-fraction { white-space: nowrap; font-size: 1.3rem; font-weight: 800; line-height: 1.16; font-variant-numeric: tabular-nums; }
 .score-graphic-compact { min-width: 62px; justify-items: end; }
 .score-graphic-compact .score-fraction { font-size: 0.94rem; }
 .score-segments { display: flex; gap: 3px; width: 100%; }

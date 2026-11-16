@@ -1,15 +1,12 @@
+import {scoreText} from './score-scale.mjs';
+export {scoreText} from './score-scale.mjs';
+
 const stateFor = passed => passed === true ? 'pass' : passed === false ? 'fail' : 'unknown';
 const states = {
   pass: {label: '충족', icon: 'M6 12l4 4 8-8'},
   fail: {label: '미충족', icon: 'M7 7l10 10M17 7L7 17'},
   unknown: {label: '미확인', icon: 'M8 12h8'},
 };
-
-export function scoreText(score) {
-  if (!Number.isInteger(score?.passed) || !Number.isInteger(score.total) ||
-      score.total < 1 || score.passed < 0 || score.passed > score.total) return '점수 확인 불가';
-  return `${score.passed}/${score.total}점`;
-}
 
 function element(tag, className, text) {
   const node = document.createElement(tag);

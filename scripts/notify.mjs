@@ -47,7 +47,7 @@ async function main(){
  for(const job of plan.jobs){
   const expired=new Set();
   for(const device of active){
-   const id=job.type+':'+createHash('sha256').update(device.endpoint).digest('hex');
+   const id=(job.id??job.type)+':'+createHash('sha256').update(device.endpoint).digest('hex');
    if(delivered.has(id))continue;
    try{await send(device,JSON.stringify(job))}
    catch(error){
@@ -60,7 +60,16 @@ async function main(){
  }
  if(canSms&&plan.jobs.length&&!delivered.has('sms')){
   let accepted=false;
-  const text=plan.jobs.map(job=>job.title+' '+job.body).join('\n');
+  const lines=[];
+  let length=0;
+  for(const job of plan.jobs){
+   const line=job.title+' '+job.body;
+   if(length+line.length+1>1500)break;
+   lines.push(line);
+   length+=line.length+1;
+  }
+  if(lines.length<plan.jobs.length)lines.push('추가 알림은 앱에서 최신 스코어를 확인하세요.');
+  const text=lines.join('\n');
   try{await sendSms(phone,text);accepted=true}catch{errors++}
   if(accepted){await mark('sms');count++}
  }
