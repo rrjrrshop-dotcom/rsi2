@@ -1,4 +1,4 @@
-export const HOLDING_ENTRY_THRESHOLD = 90;
+export const HOLDING_ENTRY_THRESHOLD = 100;
 
 export function scoreOutOf100(score) {
   const {passed, total} = score ?? {};

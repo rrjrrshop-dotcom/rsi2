@@ -24,7 +24,7 @@ export function alertPlan({result,rows,holdings,watch,previous={}}) {
     const points=scoreOutOf100(score);
     if(points!==null){
      const key=[symbol,strategy].join('|');
-     const met=points>=HOLDING_ENTRY_THRESHOLD;
+     const met=points===HOLDING_ENTRY_THRESHOLD;
      if(met&&entries.get(key)!==true)signals.holdingEntry.add(`${symbol} ${captions[strategy]} ${scoreText(score)}`);
      entries.set(key,met);
     }

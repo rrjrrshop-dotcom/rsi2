@@ -26,7 +26,7 @@ test('normalize a Korean mobile or international SMS number without permitting e
  assert.throws(()=>normalizePhone('010-1234-5678;999'),/전화번호/);
 });
 
-test('holding entry is inclusive at 90 and re-arms after a lower score', () => {
+test('holding entry requires an exact 100 and re-arms after a lower score', () => {
  const holdings=new Set(['ABC']), watch=new Set();
  const result={expectedDate:'2026-11-16'};
  function run(passed, previous, total=10){
@@ -35,9 +35,13 @@ test('holding entry is inclusive at 90 and re-arms after a lower score', () => {
  }
  const below=run(7,undefined,8);
  assert.deepEqual(below.jobs,[]);
- const first=run(9,below.next);
+ const ninety=run(9,below.next);
+ assert.deepEqual(ninety.jobs,[]);
+ const roundedTo100=run(1999,ninety.next,2000);
+ assert.deepEqual(roundedTo100.jobs,[]);
+ const first=run(10,roundedTo100.next);
  assert.deepEqual(first.jobs.map(job=>job.type),['holdingEntry']);
- assert.match(first.jobs[0].body,/ABC trend 9\/10점 · 90점/);
+ assert.match(first.jobs[0].body,/ABC trend 10\/10점 · 100점/);
  assert.deepEqual(run(10,first.next).jobs,[]);
  const missing=run(null,first.next);
  assert.deepEqual(run(10,missing.next).jobs,[]);
