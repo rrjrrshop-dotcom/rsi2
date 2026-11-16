@@ -32,7 +32,9 @@ const assert=require('node:assert/strict');
   await page.locator('#alertPhone').fill('010-1234-5678');
   await page.locator('#saveAlertPhone').click();
   await page.getByText(/발송 서비스 연결 및 번호 확인 대기/).waitFor();
-  assert.deepEqual(settings,[{holdings:['SPY'],watch:['QQQ'],phone:'010-1234-5678'}]);
+  await page.locator('#syncHoldings').click();
+  await page.waitForFunction(()=>document.querySelector('#alertSettingsStatus').textContent.includes('알림 저장'));
+  assert.deepEqual(settings,[{phone:'010-1234-5678'},{holdings:['SPY'],watch:['QQQ']}]);
   assert.deepEqual(errors,[]);
   console.log('Mobile scores render in tab order; phone registration and ready state verified.');
  }finally{await browser.close()}
