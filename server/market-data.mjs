@@ -35,7 +35,7 @@ export function makeMarketData({key,fetcher=(url,options)=>fetch(url,{...options
   async fifteenMinute(ticker,from,to) {
    if(!/^[A-Z0-9.\-]{1,15}$/.test(ticker))throw new DataError('종목 기호가 올바르지 않습니다.',400);
    if(!/^\d{4}-\d{2}-\d{2}$/.test(from)||!/^\d{4}-\d{2}-\d{2}$/.test(to)||from>to)throw new DataError('조회 날짜가 올바르지 않습니다.',400);
-   const data=await request(`/v2/aggs/ticker/${encodeURIComponent(ticker)}/range/15/minute/${from}/${to}`,{adjusted:'true',sort:'asc',limit:5000});
+   const data=await request(`/v2/aggs/ticker/${encodeURIComponent(ticker)}/range/15/minute/${from}/${to}`,{adjusted:'true',sort:'asc',limit:50000});
    if(data.next_url)throw new DataError('15분봉 데이터가 일부만 반환되었습니다.',502);
    return (data.results||[]).map(r=>({timestamp:r.t,open:r.o,high:r.h,low:r.l,close:r.c,volume:r.v}));
   },
