@@ -1,0 +1,22 @@
+name: Verify all and clear holdings selection
+on:
+  push:
+    branches: [verify-holdings-select-all]
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: npm test
+      - run: npm install --no-save playwright && npx playwright install --with-deps chromium
+      - run: |
+          python3 -m http.server 8149 --bind 127.0.0.1 > /tmp/stocking-ui-server.log 2>&1 &
+          node .github/verify-holdings-select-all.cjs
