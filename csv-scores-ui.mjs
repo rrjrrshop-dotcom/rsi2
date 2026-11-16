@@ -7,6 +7,23 @@ function node(tag,text) {
  return element;
 }
 
+function templateControls(strategy) {
+ const group=node('div');
+ const columns=strategy==='rsi2'?['Date','Symbol','Close']:['Date','Symbol','Open','High','Low','Close','Volume'];
+ const link=node('a','CSV 양식 다운로드');
+ link.href='data:text/csv;charset=utf-8,'+encodeURIComponent(columns.join(',')+'\r\n');
+ link.download='stocking-'+strategy+'-template.csv';
+ const help=node('p',strategy==='rsi2'
+  ? 'Date는 거래일(YYYY-MM-DD), Symbol은 티커, Close는 종가입니다.'
+  : 'Date는 거래일(YYYY-MM-DD), Symbol은 티커입니다. Open·High·Low·Close는 시가·고가·저가·종가, Volume은 거래량입니다.');
+ help.className='note';
+ const rows=node('p','거래일마다 한 줄을 입력하세요. 여러 종목을 넣을 때는 각 행에 티커를 입력하세요.'+
+  (strategy==='box'?' 거래량이 빠진 행이 있으면 거래량 관련 조건이 미확인으로 표시될 수 있습니다.':''));
+ rows.className='note';
+ group.append(link,help,rows);
+ return group;
+}
+
 function render(strategy, rows, list) {
  list.replaceChildren();
  for (const row of csvScores(strategy,rows)) {
@@ -27,6 +44,9 @@ window.stockingCsvScores=rows=> {
  render('rsi2',rows,list);
 };
 
+const rsiCsv=document.getElementById('csv');
+rsiCsv.closest('.row').before(templateControls('rsi2'));
+
 for (const strategy of ['1000','trend','box','breakout']) {
  const panel=node('details'), heading=node('summary'), actions=node('div'), input=node('input');
  panel.className='panel extra';panel.dataset.csvStrategy=strategy;
@@ -38,7 +58,7 @@ for (const strategy of ['1000','trend','box','breakout']) {
  const status=node('p');status.className='note';status.setAttribute('role','status');
  const list=node('div');
  actions.append(input,button);
- panel.append(heading,guide,node('p','파일은 이 기기에서 분석합니다.'),actions,status,list);
+ panel.append(heading,guide,node('p','파일은 이 기기에서 분석합니다.'),templateControls(strategy),actions,status,list);
  if(strategy==='breakout')panel.append(node('p','돌파 스코어는 파일에 담긴 가격을 사용합니다. 배당 조정 여부는 파일에서 확인하세요.'));
  button.onclick=async()=>{
   list.replaceChildren();status.textContent='';button.disabled=true;
