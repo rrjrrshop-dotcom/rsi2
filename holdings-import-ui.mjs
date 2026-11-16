@@ -27,8 +27,9 @@ function showRows(results) {
   const cell = document.createElement('th');
   cell.scope='col';cell.textContent=label;header.append(cell);
  }
+ const body = table.createTBody();
  const rows = results.map((row,index) => {
-  const line = table.insertRow();
+  const line = body.insertRow();
   const input = (name,value,type='text') => {
    const item=document.createElement('input');
    item.type=type;item.value=value??'';
