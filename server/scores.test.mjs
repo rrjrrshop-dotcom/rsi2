@@ -51,15 +51,15 @@ test('1000 scores 100 when all nine conditions pass and a crossing outside five 
   assert.equal(scoreText(result), '9/9점 · 100점');
 });
 
-test('1000 gives no points to the SNDK bearish layout even without a recent crossing', () => {
+test('1000 gives SNDK one point for no recent crossing even in reverse order', () => {
   const result = scoreAnalysis('1000', {
     close:823, ema8:922.70, ema13:991.53, ema21:1092.6, ema55:1315.38,
     previousClose:850, previousEma55:1330, rising:false, above:0,
     macd:-166.727, signal:-153.939, k:12.2, d:16.6,
     series:{e8:[980,965,950,935,922.70],e13:[1040,1025,1010,1000,991.53],e21:[1140,1125,1110,1100,1092.6]},
   });
-  assert.ok(result.conditions.every(({passed})=>passed===false));
-  assert.equal(scoreText(result), '0/9점 · 0점');
+  assert.deepEqual(result.conditions.map(({passed})=>passed), [false,false,false,false,false,true,false,false,false]);
+  assert.equal(scoreText(result), '1/9점 · 11.1점');
   assert.equal(result.exitConditions[0].passed, true);
 });
 
@@ -70,4 +70,21 @@ test('1000 gauge fails while close remains below EMA55 even above all three shor
     macd:2, signal:1, k:70, d:60,
   });
   assert.equal(result.conditions[6].passed, false);
+});
+
+test('1000 matches SOFI and LLY screenshot indicators with illustrative non-crossing histories', () => {
+  const sofi = scoreAnalysis('1000', {
+    close:15.09, ema8:15.90, ema13:16, ema21:16.02, ema55:16.32,
+    previousClose:15.6, previousEma55:16.34, rising:false, above:0,
+    macd:-.042, signal:.061, k:24.9, d:41.8,
+    series:{e8:[15.96,15.90],e13:[16.01,16],e21:[16.04,16.02]},
+  });
+  assert.equal(scoreText(sofi), '1/9점 · 11.1점');
+  const lly = scoreAnalysis('1000', {
+    close:1435.71, ema8:1410.80, ema13:1388.43, ema21:1354.33, ema55:1271.48,
+    previousClose:1430, previousEma55:1265, rising:true, above:3,
+    macd:56.535, signal:53.506, k:88.6, d:84.9,
+    series:{e8:[1405,1410.80],e13:[1380,1388.43],e21:[1347,1354.33]},
+  });
+  assert.equal(scoreText(lly), '9/9점 · 100점');
 });
