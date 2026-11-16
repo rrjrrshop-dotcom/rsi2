@@ -43,8 +43,34 @@ function showRows(results) {
   qty.step=price.step='any';
   return {checked,symbol,qty,price};
  });
+ const selection=document.createElement('div');
+ selection.className='row';
+ const all=document.createElement('button'), none=document.createElement('button');
+ const count=document.createElement('span');
+ all.type=none.type='button';
+ all.className=none.className='secondary';
+ all.textContent='모두 선택';
+ none.textContent='모두 해제';
+ count.className='note';count.setAttribute('role','status');
+ selection.append(all,none,count);
  const save=document.createElement('button');
  save.type='button';save.textContent='선택한 종목 저장';
+ function updateSelection(){
+  const selected=rows.filter(row=>row.checked.checked).length;
+  count.textContent=`${rows.length}개 중 ${selected}개 선택`;
+  save.disabled=none.disabled=selected===0;
+  all.disabled=selected===rows.length;
+ }
+ function selectAll(checked){
+  for(const row of rows)row.checked.checked=checked;
+  updateSelection();
+ }
+ all.onclick=()=>selectAll(true);
+ none.onclick=()=>selectAll(false);
+ body.addEventListener('change',event=>{
+  if(event.target.type==='checkbox')updateSelection();
+ });
+ updateSelection();
  save.onclick=()=>{
   try {
    const chosen=rows.filter(row=>row.checked.checked).map(({symbol,qty,price})=>({symbol:symbol.value,qty:qty.value,price:price.value}));
@@ -54,7 +80,7 @@ function showRows(results) {
    preview.replaceChildren();preview.hidden=true;field.value='';
   } catch(error){status.textContent=error.message}
  };
- preview.replaceChildren(table,save);preview.hidden=false;
+ preview.replaceChildren(selection,table,save);preview.hidden=false;
 }
 
 read.onclick=async()=>{
