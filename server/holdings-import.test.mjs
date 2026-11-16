@@ -22,6 +22,10 @@ test('derives and labels cost from USD market value and signed gain', () => {
 test('rejects incomplete and duplicate rows before applying changes',()=>{
  const before=[{symbol:'NVDA',qty:12,price:217.55}];
  assert.throws(()=>reconcileHoldings(before,[{symbol:'NVDA',qty:1,price:1}]),/중복/);
+ assert.throws(()=>reconcileHoldings(before,[{symbol:' nvda ',qty:'12',price:'217.550'}]),/매수가와 수량이 같은/);
+ const exact={symbol:'NVDA',qty:12,price:217.55};
+ assert.throws(()=>reconcileHoldings([], [exact,exact]),/매수가와 수량이 같은/);
+ assert.deepEqual(before,[exact]);
  assert.throws(()=>reconcileHoldings(before,[{symbol:'',qty:2,price:1}]),/티커/);
  assert.deepEqual(reconcileHoldings(before,[{symbol:'qld',qty:'0.02',price:'90'}]).at(-1),{symbol:'QLD',qty:.02,price:90});
 });

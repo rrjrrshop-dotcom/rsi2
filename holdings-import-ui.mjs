@@ -1,4 +1,4 @@
-import {readHoldingsImage,reconcileHoldings} from './holdings-import.mjs';
+import {readHoldingsImage,reconcileHoldings,isSameHolding,duplicateHoldingMessage} from './holdings-import.mjs';
 
 const field = document.getElementById('holdingsImages');
 const read = document.getElementById('readHoldingsImages');
@@ -112,4 +112,26 @@ read.onclick=async()=>{
   status.textContent=`${rows.length}개 행을 찾았습니다. 인식된 값을 검토하고 저장할 행만 선택하세요.`;
  }catch(error){status.textContent=error.message}
  finally{read.disabled=false;await worker?.terminate().catch(()=>{})}
+};
+
+document.getElementById('holdingForm').onsubmit = event => {
+ event.preventDefault();
+ const symbol = document.getElementById('ticker').value.trim().toUpperCase();
+ const price = Number(document.getElementById('buy').value);
+ const qty = Number(document.getElementById('qty').value);
+ const status = document.getElementById('holdingSaveStatus');
+ status.textContent = '';
+ if (!symbol || !Number.isFinite(price) || !Number.isFinite(qty) || price <= 0 || qty <= 0) return;
+ const candidate = {symbol,price,qty};
+ const current = window.stockingHoldings.read();
+ if (current.some(item => isSameHolding(item,candidate))) {
+  status.textContent = duplicateHoldingMessage(symbol);
+  return;
+ }
+ try {
+  window.stockingHoldings.save([...current.filter(item => item.symbol !== symbol),candidate]);
+  event.target.reset();
+ } catch {
+  status.textContent = '보유 종목을 이 기기에 저장하지 못했습니다.';
+ }
 };

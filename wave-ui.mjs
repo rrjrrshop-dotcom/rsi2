@@ -38,15 +38,17 @@ function draw(bars,state){
  canvas.hidden=false;
 }
 
-async function open(symbol){
+async function open(symbol,date,codeField='pairCode'){
  const version=++request;
  title.textContent=symbol+' · 엘리어트 파동 후보';
  status.textContent='저장된 확정 일봉을 읽는 중입니다…';
  canvas.hidden=true;stats.replaceChildren();
  if(!dialog.open)dialog.showModal();
  try{
-  const code=window.accessCode('pairCode');
-  const response=await window.authorizedFetch('/api/quote?symbol='+encodeURIComponent(symbol),{},code);
+  const code=window.accessCode(codeField);
+  const params=new URLSearchParams({symbol});
+  if(date)params.set('through',date);
+  const response=await window.authorizedFetch('/api/quote?'+params,{},code);
   const data=await response.json();
   if(!response.ok)throw Error(data.error||'일봉을 읽지 못했습니다.');
   if(version!==request||!dialog.open)return;
@@ -64,7 +66,7 @@ async function open(symbol){
   }
  }catch(error){if(version===request)status.textContent=error.message}
 }
-document.getElementById('holdings').addEventListener('click',event=>{
+document.getElementById('holdings-settings').addEventListener('click',event=>{
  const button=event.target.closest('[data-wave-symbol]');
- if(button)open(button.dataset.waveSymbol);
+ if(button)open(button.dataset.waveSymbol,button.dataset.waveDate,button.dataset.waveCodeField);
 });

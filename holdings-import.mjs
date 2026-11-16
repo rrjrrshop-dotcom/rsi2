@@ -80,18 +80,30 @@ export function readHoldingsImage(tsv, width) {
  });
 }
 
+export function isSameHolding(existing, candidate) {
+ return existing.symbol === candidate.symbol &&
+  existing.price === candidate.price && existing.qty === candidate.qty;
+}
+
+export const duplicateHoldingMessage = symbol => symbol+' 종목은 매수가와 수량이 같은 항목이 이미 등록되어 있어 중복 저장할 수 없습니다.';
+
 export function reconcileHoldings(current, rows) {
  const existing = new Set(current.map(item => item.symbol));
- const selected = new Set();
+ const selected = new Map();
  const additions = rows.map(row => {
   const symbol = String(row.symbol).trim().toUpperCase();
   const qty = Number(row.qty), price = Number(row.price);
   if (!ticker.test(symbol) || !Number.isFinite(qty) || qty<=0 || !Number.isFinite(price) || price<=0) {
    throw Error('선택한 행의 티커·수량·매입가를 확인하세요.');
   }
+  const candidate = {symbol,qty,price};
+  if (current.some(item => isSameHolding(item,candidate)) ||
+      (selected.has(symbol) && isSameHolding(selected.get(symbol),candidate))) {
+   throw Error(duplicateHoldingMessage(symbol));
+  }
   if (existing.has(symbol) || selected.has(symbol)) throw Error(symbol+' 종목이 중복됩니다. 한 행만 선택하거나 기존 항목을 수기로 수정하세요.');
-  selected.add(symbol);
-  return {symbol,qty,price};
+  selected.set(symbol,candidate);
+  return candidate;
  });
  return [...current,...additions];
 }
