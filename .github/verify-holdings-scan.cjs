@@ -21,9 +21,9 @@ const assert=require('node:assert/strict');
    const canvas=document.createElement('canvas');canvas.width=1000;canvas.height=270;
    const ctx=canvas.getContext('2d');ctx.fillStyle='white';ctx.fillRect(0,0,1000,220);
    ctx.fillStyle='black';ctx.font='26px sans-serif';
-   for(const [text,x,y] of [['Ticker',18,60],['Company',185,60],['Transaction',455,60],['Shares',670,60],['Cost',742,60],
-    ['CRM',42,110],['Salesforce',185,110],['Buy',490,110],['28',680,110],['186.26',742,110],
-    ['NVDA',42,160],['NVIDIA',185,160],['Buy',490,160],['12',680,160],['217.55',742,160]])ctx.fillText(text,x,y);
+   for(const [text,x,y] of [['Ticker',18,60],['Company',185,60],['Transaction',455,60],['Shares',650,60],['Cost',815,60],
+    ['CRM',42,110],['Salesforce',185,110],['Buy',490,110],['28',660,110],['186.26',815,110],
+    ['NVDA',42,160],['NVIDIA',185,160],['Buy',490,160],['12',660,160],['217.55',815,160]])ctx.fillText(text,x,y);
    return canvas.toDataURL().split(',')[1];
   });
   await page.locator('#holdingsImages').setInputFiles({name:'fictional-portfolio.png',mimeType:'image/png',buffer:Buffer.from(img,'base64')});
