@@ -83,7 +83,7 @@ test('recommendations require both verified index membership and eligibility, an
     assert.ok(rows.every(row => row.symbol.startsWith('GOOD')));
     assert.ok(rows.every(row => row.indexes.length === 2 && row.conditions.length === row.total));
     assert.ok(rows.every((row, i) => !i || rows[i - 1].passed >= row.passed));
-    assert.equal(rows[0].total, {'1000':7, trend:8, box:4, rsi2:2, breakout:2}[id]);
+    assert.equal(rows[0].total, {'1000':9, trend:8, box:4, rsi2:2, breakout:2}[id]);
     assert.deepEqual(saved.marketRecommendations[id].map(row => row.symbol).sort(), ['GOODA', 'MARKET']);
     assert.deepEqual(saved.marketRecommendations[id].find(row => row.symbol === 'MARKET').indexes, []);
   }

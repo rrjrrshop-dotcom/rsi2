@@ -1,6 +1,7 @@
 import {analyze} from './server/signals.mjs';
-import {analyze1000} from './strategy1000.mjs';
-import {estimate1000Score} from './strategy1000-score.mjs';
+import {analyze1000, shortEmasCrossed, SHORT_EMA_LOOKBACK} from './strategy1000.mjs';
+
+export const THOUSAND_SCORE_TOTAL = 9;
 import {analyzeTrend} from './trend.mjs';
 import {analyzeBox} from './box.mjs';
 import {analyzeBreakout} from './breakout.mjs';
@@ -20,12 +21,30 @@ function assessment(id, conditions, {exitConditions = [], note = '', tieBreaker 
 export function scoreAnalysis(id, result) {
   switch (id) {
     case '1000': {
-      const estimate = estimate1000Score(result);
-      return assessment(id, estimate.checks.map(({name, passed, left, right}) =>
-        check(name, passed, comparison(left, right, name.startsWith('MACD') ? 3 : 2))), {
-        note: estimate.score === null ? '' : scoreName(id) + ' · 가중 추정 ' + estimate.score + '/9점',
-        tieBreaker: estimate.score ?? 0,
-        exitConditions: [check('하이킨아시 종가 < EMA55', result.close < result.ema55, comparison(result.close,result.ema55))],
+      const {close, ema8, ema13, ema21, ema55, previousClose, previousEma55, rising, above, series, macd, signal, k, d} = result;
+      const averages = [ema8, ema13, ema21];
+      const emaValues = averages.map(value => number(value)).join(' / ');
+      const bullishOrder = ema8 > ema13 && ema13 > ema21;
+      const aboveLongAverage = close > ema55;
+      const crossed = series ? shortEmasCrossed(series) : null;
+      return assessment(id, [
+        check('단기 EMA 정배열 · 8 > 13 > 21', bullishOrder, emaValues),
+        check('눌림 기준 · HA 종가 > EMA21', close > ema21, comparison(close, ema21)),
+        check('추세 기준 · HA 종가 > EMA55', aboveLongAverage, comparison(close, ema55)),
+        check('보유 기준 · 직전·당일 HA 종가 모두 EMA55 위',
+          Number.isFinite(previousClose) && Number.isFinite(previousEma55)
+            ? previousClose > previousEma55 && close > ema55 : null,
+          '직전 ' + comparison(previousClose, previousEma55) + ' · 당일 ' + comparison(close, ema55)),
+        check('중장기 배열 · 단기 EMA 3개 모두 EMA55 위', averages.every(value => value > ema55),
+          emaValues + ' · EMA55 ' + number(ema55)),
+        check('단기 삼선 꼬임 없음', crossed === null ? null : !crossed,
+          crossed === null ? '이평선 이력 부족' : `최근 ${SHORT_EMA_LOOKBACK}거래일 · ${crossed ? '교차 있음' : '교차 없음'}`),
+        check('삼선 게이지 · 상승 캔들이며 HA 종가가 단기 EMA 3개와 EMA55 위', rising && above === 3 && aboveLongAverage,
+          `${rising ? '상승' : '하락'} 캔들 · 3선 중 ${above}개 위 · EMA55 ${aboveLongAverage ? '위' : '이하'}`),
+        check('MACD > 시그널', macd > signal, comparison(macd, signal, 3)),
+        check('스토캐스틱 %K > %D', k > d, comparison(k, d)),
+      ], {
+        exitConditions: [check('하이킨아시 종가 < EMA55', close < ema55, comparison(close,ema55))],
       });
     }
     case 'trend': {

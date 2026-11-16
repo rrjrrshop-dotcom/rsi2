@@ -1,3 +1,15 @@
+export const SHORT_EMA_LOOKBACK = 5;
+
+export function shortEmasCrossed(series) {
+ const pairs = [['e8','e13'], ['e8','e21'], ['e13','e21']];
+ return pairs.some(([left,right]) => {
+  const leftValues = series[left].slice(-SHORT_EMA_LOOKBACK);
+  const rightValues = series[right].slice(-SHORT_EMA_LOOKBACK);
+  const differences = leftValues.map((value,i) => value-rightValues[i]);
+  return differences.some((value,i) => value===0 || (i>0 && Math.sign(value)!==Math.sign(differences[i-1])));
+ });
+}
+
 /** Daily 1000 strategy using the observable trend rules. */
 export function analyze1000(input){
  if(!Array.isArray(input)||input.length<60)throw Error('일봉 데이터가 최소 60개 필요합니다.');
@@ -16,5 +28,5 @@ export function analyze1000(input){
  const trend=levels.every(v=>v>e55[i])?'단기선 모두 55일선 위':levels.every(v=>v<e55[i])?'단기선 모두 55일선 아래':'단기선과 55일선 혼조';
  const order=e8[i]>e13[i]&&e13[i]>e21[i]?'정배열':e8[i]<e13[i]&&e13[i]<e21[i]?'역배열':'혼조';
  let streak=1;const rising=ha[i].close>=ha[i].open;for(let j=i-1;j>=0&&(ha[j].close>=ha[j].open)===rising;j--)streak++;
- return {date:bars[i].date,close,ema8:e8[i],ema13:e13[i],ema21:e21[i],ema55:e55[i],macd:macd[i],signal:signal[i],k:k[i],d:d[i],trend,order,above,position,nextLevel,defense,rising,streak,holding:close>e55[i]?'55일선 위':'55일선 아래',ha,series:{e8,e13,e21,e55,macd,signal,k,d}};
+ return {date:bars[i].date,close,ema8:e8[i],ema13:e13[i],ema21:e21[i],ema55:e55[i],macd:macd[i],signal:signal[i],k:k[i],d:d[i],trend,order,above,position,nextLevel,defense,rising,streak,previousClose:closes[i-1],previousEma55:e55[i-1],holding:close>e55[i]?'55일선 위':'55일선 아래',ha,series:{e8,e13,e21,e55,macd,signal,k,d}};
 }

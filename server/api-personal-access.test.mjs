@@ -120,7 +120,10 @@ test('private saved market history drives all quote and recommendation requests'
     const scanMeta = await store.stage({dates:scanDays,history,receivedAt});
     const candidates = ['MISSING', ...symbols, 'HIGH'].map(symbol => ({symbol,date:scanDate}));
     const buy = [{symbol:'RSI',date:scanDate,close:110,sma200:90,sma5:120,rsi:4,exit:false}];
-    await store.publish(scanMeta,{expectedDate:scanDate,total:13,buy,preliminary:{breakout:candidates}},{},nextMeta);
+    await store.publish(scanMeta,{expectedDate:scanDate,total:13,buy,preliminary:{breakout:candidates,
+      recommendations:{'1000':[{symbol:'HIGH',date:scanDate,total:7,passed:3,indexes:['nasdaq100']}]},
+      recommendationScreen:{version:2,status:'applied',scope:'nasdaq100-sp500-dow',through:scanDate},
+    }},{},nextMeta);
     const first = await call(results,{strategy:'breakout',page:0});
     const second = await call(results,{strategy:'breakout',page:1});
     assert.equal(first.statusCode,200);
@@ -128,6 +131,10 @@ test('private saved market history drives all quote and recommendation requests'
     assert.equal(first.body.rows[0].passed,2);
     assert.deepEqual(first.body.rows.map(row => row.symbol),['HIGH', ...symbols]);
     assert.deepEqual(second.body.rows,[{symbol:'MISSING'}]);
+    const updated = (await call(results)).body.preliminary.recommendations['1000'][0];
+    assert.equal(updated.total,9);
+    assert.equal(updated.conditions.length,9);
+    assert.deepEqual(updated.indexes,['nasdaq100']);
     const rsi = await call(results,{strategy:'rsi2'});
     assert.equal(rsi.body.rows[0].passed,2);
   } finally {

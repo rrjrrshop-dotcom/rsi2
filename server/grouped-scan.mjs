@@ -76,7 +76,7 @@ export function scanHistories({symbols, dates, history, major, all, dividends, r
   if (!originalScan) continue;
   if(!current||bars.length<252){preliminary.skipped++;continue}
   try{const t=analyzeTrend(bars);preliminary.trend.push({symbol,score:t.passed,known:7,total:8,close:t.close,date:t.date});}catch{preliminary.skipped++;continue}
-  try{const t=analyze1000(bars);preliminary.thousand.push({symbol,above:t.above,close:t.close,date:t.date});}catch{}
+  try{const t=analyze1000(bars);preliminary.thousand.push({symbol,above:t.above,passed:scoreAnalysis('1000',t).passed,close:t.close,date:t.date});}catch{}
   if (breakout?.signals.s1) {
    const {state, close, high20, atr, date} = breakout;
    preliminary.breakout.push({symbol, state, close, high20, atr, date});
@@ -91,7 +91,7 @@ export function scanHistories({symbols, dates, history, major, all, dividends, r
  }
  preliminary.breakout.sort((a,b)=>Number(b.state==='both')-Number(a.state==='both')||(a.close-a.high20)/a.atr-(b.close-b.high20)/b.atr||a.symbol.localeCompare(b.symbol));
  preliminary.trend.sort((a,b)=>b.score-a.score||a.symbol.localeCompare(b.symbol));
- preliminary.thousand.sort((a,b)=>b.above-a.above||a.symbol.localeCompare(b.symbol));
+ preliminary.thousand.sort((a,b)=>b.passed-a.passed||a.symbol.localeCompare(b.symbol));
  preliminary.box.sort((a,b)=>Number(b.close>b.upper&&b.aboveSma)-Number(a.close>a.upper&&a.aboveSma)||b.volumeRatio-a.volumeRatio||a.symbol.localeCompare(b.symbol));
  for(const k of ['trend','box','thousand','breakout'])preliminary[k]=preliminary[k].slice(0,10);
  const group=status=>records.filter(x=>x.status===status);
