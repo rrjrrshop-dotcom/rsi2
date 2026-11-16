@@ -97,7 +97,7 @@ async function fetchBars(symbol, code, id) {
 async function refreshWatch(id){const panel=$('strategy-'+id),list=panel.querySelector('.watch-items'),status=panel.querySelector('.watch-status'),run=++generation,code=codeFor(id);panel.querySelector('.watch-count').textContent=`${watch.length}/10`;if(!watch.length){list.replaceChildren();status.textContent='관심종목을 등록하세요.';return}if(!code){renderRows(id,watch.map(symbol=>({symbol,error:'개인 등록 코드 필요'})),list,true);status.textContent='점수 확인을 위해 개인 등록 코드를 입력하세요.';return}status.textContent='관심종목의 확정 일봉을 확인하는 중…';const result=[];for(const symbol of [...watch]){try{const data=await fetchBars(symbol,code,id),score=scoreStrategy(id,data.bars,symbol);result.push({symbol,...score,date:data.through,stale:data.staleWarning})}catch(e){result.push({symbol,error:e.message})}if(run!==generation)return}result.sort(compareScores);renderRows(id,result,list,true);status.textContent=`충족한 조건 수가 많은 순${result.some(x=>x.stale)?' · 오래된 종가 포함':''}${result.some(x=>x.error)?' · 일부 확인 실패 (요청 한도 또는 데이터 부족)':''}`}
 const recommendationState = new Map();
 const holdingRecommendations = $('holdingRecommendations');
-const holdingsPanel = $('holdings-settings');
+const holdingRecommendationsPanel = $('recommendation-settings');
 const strategyTitles = {'1000':'1000',trend:'trend',box:'box',rsi2:'RSI2',breakout:'breakout'};
 const scopeLabels = {
  major: {title: '주요상장사', detail: '나스닥 100 · S&P 500 · 다우'},
@@ -296,9 +296,9 @@ for(const id of ids){const panel=$('strategy-'+id),heading=panel.querySelector('
 function refreshHoldingRecommendations(reload = false) {
  for (const [index,id] of ids.entries()) refreshRecommendations(id,reload && index === 0);
 }
-holdingsPanel.addEventListener('toggle', () => {
- if (holdingsPanel.open) refreshHoldingRecommendations();
+holdingRecommendationsPanel.addEventListener('toggle', () => {
+ if (holdingRecommendationsPanel.open) refreshHoldingRecommendations();
 });
 $('loadHoldingRecommendations').onclick = () => refreshHoldingRecommendations(true);
-if (holdingsPanel.open) refreshHoldingRecommendations();
+if (holdingRecommendationsPanel.open) refreshHoldingRecommendations();
 refreshWatch(selected());refreshRecommendations(selected());

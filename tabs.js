@@ -24,7 +24,7 @@ for (const tab of tabs) {
 
 function openSettingsLink() {
   const id = location.hash.slice(1);
-  if (!['notification-settings','enablePush','holdings-settings'].includes(id)) return;
+  if (!['notification-settings','enablePush','holdings-settings','recommendation-settings'].includes(id)) return;
   const panel = document.getElementById(id).closest('details');
   activateStrategy('help');
   panel.open = true;

@@ -66,7 +66,7 @@ async function open(symbol,date,codeField='pairCode'){
   }
  }catch(error){if(version===request)status.textContent=error.message}
 }
-document.getElementById('holdings-settings').addEventListener('click',event=>{
+document.getElementById('strategy-help').addEventListener('click',event=>{
  const button=event.target.closest('[data-wave-symbol]');
  if(button)open(button.dataset.waveSymbol,button.dataset.waveDate,button.dataset.waveCodeField);
 });
