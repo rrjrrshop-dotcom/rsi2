@@ -23,8 +23,7 @@ function watchList(){
 async function saveSettings(phone){
  const status=$('alertSettingsStatus');
  try{
-  const data=await request('/api/alert-settings','PUT',{holdings:holdings().map(item=>item.symbol),watch:watchList(),
-   ...(phone!==undefined&&{phone})});
+  const data=await request('/api/alert-settings','PUT',phone===undefined?{holdings:holdings().map(item=>item.symbol),watch:watchList()}:{phone});
   $('alertPhone').value='';
   status.textContent=`보유 ${data.holdings}개 · 관심 ${data.watch}개 알림 저장`+
    (data.phone?` · 문자 번호 ${data.phone} ${data.smsReady?'· 발송 설정 완료':'· 발송 서비스 연결 및 번호 확인 대기'}`:' · 등록된 문자 번호 없음');

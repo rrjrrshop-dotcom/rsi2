@@ -17,11 +17,12 @@ async function main(){
  const key='rsi2:alert-deliveries';
  const saved=await state.get(key)??{};
  if(saved.completed?.date===meta.through){console.log('Alerts already checked for '+meta.through);return}
- const [result,prefs,legacy]=await Promise.all([resultStore(settings).load(),state.get('rsi2:alert-preferences'),state.get('rsi2:holdings-symbols')]);
+ const [result,prefs,legacy,registeredPhone]=await Promise.all([resultStore(settings).load(),state.get('rsi2:alert-preferences'),
+  state.get('rsi2:holdings-symbols'),state.get('rsi2:alert-phone')]);
  if(result?.expectedDate!==meta.through)throw Error('Market close and alert source do not match');
  const subs=upstashSubscriptions(settings);
  const devices=await subs.list();
- const phone=prefs?.phone;
+ const phone=registeredPhone??prefs?.phone;
  const canSms=smsReady()&&phone&&normalizePhone(process.env.TWILIO_VERIFIED_TO)===phone;
  if(!devices.length&&!canSms){console.log('No registered alert destinations');return}
  const holdings=new Set(prefs?.holdings??legacy??[]),watch=new Set(prefs?.watch??[]);
