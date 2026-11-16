@@ -24,21 +24,23 @@ export function scoreAnalysis(id, result) {
       const {close, ema8, ema13, ema21, ema55, previousClose, previousEma55, rising, above, series, macd, signal, k, d} = result;
       const averages = [ema8, ema13, ema21];
       const emaValues = averages.map(value => number(value)).join(' / ');
+      const bullishOrder = ema8 > ema13 && ema13 > ema21;
+      const aboveLongAverage = close > ema55;
       const crossed = series ? shortEmasCrossed(series) : null;
       return assessment(id, [
-        check('단기 EMA 정배열 · 8 > 13 > 21', ema8 > ema13 && ema13 > ema21, emaValues),
+        check('단기 EMA 정배열 · 8 > 13 > 21', bullishOrder, emaValues),
         check('눌림 기준 · HA 종가 > EMA21', close > ema21, comparison(close, ema21)),
-        check('추세 기준 · HA 종가 > EMA55', close > ema55, comparison(close, ema55)),
+        check('추세 기준 · HA 종가 > EMA55', aboveLongAverage, comparison(close, ema55)),
         check('보유 기준 · 직전·당일 HA 종가 모두 EMA55 위',
           Number.isFinite(previousClose) && Number.isFinite(previousEma55)
             ? previousClose > previousEma55 && close > ema55 : null,
           '직전 ' + comparison(previousClose, previousEma55) + ' · 당일 ' + comparison(close, ema55)),
         check('중장기 배열 · 단기 EMA 3개 모두 EMA55 위', averages.every(value => value > ema55),
           emaValues + ' · EMA55 ' + number(ema55)),
-        check('단기 삼선 꼬임 없음', crossed === null ? null : !crossed,
-          crossed === null ? '이평선 이력 부족' : `최근 ${SHORT_EMA_LOOKBACK}거래일 · ${crossed ? '교차 있음' : '교차 없음'}`),
-        check('삼선 게이지 · 상승 캔들이며 HA 종가가 단기 EMA 3개 위', rising && above === 3,
-          `${rising ? '상승' : '하락'} 캔들 · 3선 중 ${above}개 위`),
+        check('단기 삼선 정배열 유지 · 꼬임 없음', crossed === null ? null : bullishOrder && !crossed,
+          crossed === null ? '이평선 이력 부족' : `최근 ${SHORT_EMA_LOOKBACK}거래일 · ${crossed ? '교차 있음' : '교차 없음'} · ${bullishOrder ? '정배열' : '정배열 아님'}`),
+        check('삼선 게이지 · 상승 캔들이며 HA 종가가 단기 EMA 3개와 EMA55 위', rising && above === 3 && aboveLongAverage,
+          `${rising ? '상승' : '하락'} 캔들 · 3선 중 ${above}개 위 · EMA55 ${aboveLongAverage ? '위' : '이하'}`),
         check('MACD > 시그널', macd > signal, comparison(macd, signal, 3)),
         check('스토캐스틱 %K > %D', k > d, comparison(k, d)),
       ], {

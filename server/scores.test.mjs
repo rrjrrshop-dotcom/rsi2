@@ -50,3 +50,24 @@ test('1000 scores 100 when all nine conditions pass and a crossing outside five 
   });
   assert.equal(scoreText(result), '9/9점 · 100점');
 });
+
+test('1000 gives no points to the SNDK bearish layout even without a recent crossing', () => {
+  const result = scoreAnalysis('1000', {
+    close:823, ema8:922.70, ema13:991.53, ema21:1092.6, ema55:1315.38,
+    previousClose:850, previousEma55:1330, rising:false, above:0,
+    macd:-166.727, signal:-153.939, k:12.2, d:16.6,
+    series:{e8:[980,965,950,935,922.70],e13:[1040,1025,1010,1000,991.53],e21:[1140,1125,1110,1100,1092.6]},
+  });
+  assert.ok(result.conditions.every(({passed})=>passed===false));
+  assert.equal(scoreText(result), '0/9점 · 0점');
+  assert.equal(result.exitConditions[0].passed, true);
+});
+
+test('1000 gauge fails while close remains below EMA55 even above all three short EMAs', () => {
+  const result = scoreAnalysis('1000', {
+    close:110, ema8:109, ema13:108, ema21:107, ema55:112,
+    previousClose:109, previousEma55:112, rising:true, above:3,
+    macd:2, signal:1, k:70, d:60,
+  });
+  assert.equal(result.conditions[6].passed, false);
+});
