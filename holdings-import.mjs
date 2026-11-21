@@ -19,6 +19,14 @@ const readNumber = (row, min, max) => {
  return number(words.map(w => w.text).join('')) ?? words.map(w => number(w.text)).find(n => n !== null) ?? null;
 };
 
+export function purchaseDate(value) {
+ const match=String(value??'').trim().match(/^(?:(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})|(\d{1,2})[-/.](\d{1,2})[-/.](\d{4}))$/);
+ if(!match)return '';
+ const [,year,month,day,usMonth,usDay,usYear]=match;
+ const date=[year||usYear,(month||usMonth).padStart(2,'0'),(day||usDay).padStart(2,'0')].join('-');
+ const parsed=new Date(date+'T00:00:00Z');
+ return Number.isFinite(parsed.getTime())&&parsed.toISOString().slice(0,10)===date?date:'';
+}
 export function readHoldingsImage(tsv, width) {
  const words = tsv.split(/\r?\n/).flatMap(line => {
   const [level,,,,,,left,top,w,h,,text] = line.split('\t');
@@ -48,7 +56,7 @@ export function readHoldingsImage(tsv, width) {
     const estimate = Math.round(total/price);
     if (estimate>0 && Math.abs(total-estimate*price) <= estimate*.005+.01) qty=estimate;
    }
-   return [{symbol,qty,price,source:'매입가 열'}];
+   return [{symbol,qty,price,buyDate:row.words.map(w=>purchaseDate(w.text)).find(Boolean)||'',source:'매입가 열'}];
   });
  }
  const marketRows = lines.filter(row => row.words.some(w => w.x>.57 && /USD$/i.test(w.text) && number(w.text)>0));
@@ -96,7 +104,7 @@ export function reconcileHoldings(current, rows) {
   if (!ticker.test(symbol) || !Number.isFinite(qty) || qty<=0 || !Number.isFinite(price) || price<=0) {
    throw Error('선택한 행의 티커·수량·매입가를 확인하세요.');
   }
-  const candidate = {symbol,qty,price};
+  const candidate = {symbol,qty,price,...(purchaseDate(row.buyDate)&&{buyDate:purchaseDate(row.buyDate)})};
   if (current.some(item => isSameHolding(item,candidate)) ||
       (selected.has(symbol) && isSameHolding(selected.get(symbol),candidate))) {
    throw Error(duplicateHoldingMessage(symbol));

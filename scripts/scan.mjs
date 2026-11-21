@@ -11,7 +11,7 @@ import {scanHistories} from '../server/grouped-scan.mjs';
 import {rateLimit} from '../server/batch-scan.mjs';
 import {daysBefore, MAX_FUNDAMENTALS_AGE_DAYS} from '../server/sec-fundamentals.mjs';
 import {loadQuotelinksFundamentals} from '../server/quotelinks-fundamentals.mjs';
-import {screenRecommendations} from '../server/recommendation-screen.mjs';
+import {screenRecommendations,sharesAtClose,passesFinancialScreen} from '../server/recommendation-screen.mjs';
 import {indexRecommendationUniverse} from '../server/index-constituents.mjs';
 import {hasCurrentRecommendationScreen, RECOMMENDATION_SCOPES} from '../recommendation-policy.mjs';
 
@@ -209,6 +209,13 @@ async function main() {
     delete candidate.dailyFrame;
   }
   const finalResult = {...attachSecurityMetadata(result, universe.securities), createdAt: new Date().toISOString()};
+  finalResult.companyProfiles=Object.fromEntries(directory.map(company=>{
+    const data=facts.get(company.ticker), shares=sharesAtClose(data?.shares,splits.get(company.ticker)??[],through);
+    const cap=shares*closes.get(company.ticker);
+    return [company.ticker,{name:company.name,marketCap:Number.isFinite(cap)&&cap>0?cap:null,
+      financials:data?.balance?(passesFinancialScreen(data.balance)?'재무 기준 통과':'재무 기준 미달'):'자료 부족',
+      indexes:indexed.securities.find(item=>item.symbol===company.ticker)?.indexes??[],through}];
+  }));
   await cache.publish(meta, finalResult, frameContexts, previous);
   const [stored, saved] = await Promise.all([cache.current(), resultStore(settings).load()]);
   if (stored?.generation !== meta.generation || saved?.createdAt !== finalResult.createdAt ||

@@ -8,7 +8,7 @@ export function passesFinancialScreen(balance) {
   return [currentAssets, currentLiabilities].every(Number.isFinite) && currentLiabilities >= 0 && currentAssets >= currentLiabilities;
 }
 
-function sharesAtClose(shares, splits, through) {
+export function sharesAtClose(shares, splits, through) {
   if (!shares || shares.date > through) return null;
   let count = shares.count;
   for (const split of splits) {

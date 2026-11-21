@@ -12,6 +12,7 @@ export function compactScan(result){
  if(typeof result.createdAt==='string')out.createdAt=result.createdAt;
  if(typeof result.marketReceivedAt==='string')out.marketReceivedAt=result.marketReceivedAt;
  if(Number.isInteger(result.marketSessions))out.marketSessions=result.marketSessions;
+ if(result.companyProfiles)out.companyProfiles=result.companyProfiles;
  const payload=JSON.stringify(out);if(Buffer.byteLength(payload,'utf8')>8*1024*1024)throw Error('scan summary too large');
  return out;
 }

@@ -1,4 +1,4 @@
-import {readHoldingsImage,reconcileHoldings,isSameHolding,duplicateHoldingMessage} from './holdings-import.mjs';
+import {readHoldingsImage,reconcileHoldings,isSameHolding,duplicateHoldingMessage,purchaseDate} from './holdings-import.mjs';
 
 const field = document.getElementById('holdingsImages');
 const read = document.getElementById('readHoldingsImages');
@@ -23,7 +23,7 @@ function loadEngine() {
 function showRows(results) {
  const table = document.createElement('table');
  const header = table.createTHead().insertRow();
- for (const label of ['선택','화면 인식','티커','수량','매입가(USD)']) {
+ for (const label of ['선택','화면 인식','티커','수량','매입가(USD)','매수일']) {
   const cell = document.createElement('th');
   cell.scope='col';cell.textContent=label;header.append(cell);
  }
@@ -41,7 +41,8 @@ function showRows(results) {
   line.insertCell().textContent=[row.name,row.source].filter(Boolean).join(' · ');
   const symbol=input('티커',row.symbol), qty=input('수량',row.qty,'number'), price=input('매입가',row.price,'number');
   qty.step=price.step='any';
-  return {checked,symbol,qty,price};
+  const buyDate=input('매수일',row.buyDate,'date');
+  return {checked,symbol,qty,price,buyDate};
  });
  const selection=document.createElement('div');
  selection.className='row';
@@ -73,7 +74,7 @@ function showRows(results) {
  updateSelection();
  save.onclick=()=>{
   try {
-   const chosen=rows.filter(row=>row.checked.checked).map(({symbol,qty,price})=>({symbol:symbol.value,qty:qty.value,price:price.value}));
+   const chosen=rows.filter(row=>row.checked.checked).map(({symbol,qty,price,buyDate})=>({symbol:symbol.value,qty:qty.value,price:price.value,buyDate:buyDate.value}));
    if (!chosen.length) throw Error('저장할 행을 선택하세요.');
    window.stockingHoldings.save(reconcileHoldings(window.stockingHoldings.read(),chosen));
    status.textContent=`${chosen.length}개 종목을 이 기기에 저장했습니다.`;
@@ -122,7 +123,8 @@ document.getElementById('holdingForm').onsubmit = event => {
  const status = document.getElementById('holdingSaveStatus');
  status.textContent = '';
  if (!symbol || !Number.isFinite(price) || !Number.isFinite(qty) || price <= 0 || qty <= 0) return;
- const candidate = {symbol,price,qty};
+ const buyDate=purchaseDate(document.getElementById('buyDate').value);
+ const candidate = {symbol,price,qty,...(buyDate&&{buyDate})};
  const current = window.stockingHoldings.read();
  if (current.some(item => isSameHolding(item,candidate))) {
   status.textContent = duplicateHoldingMessage(symbol);

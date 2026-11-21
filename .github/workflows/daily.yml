@@ -2,12 +2,7 @@ name: Daily market scan
 on:
   workflow_dispatch:
   schedule:
-    # Stocks Basic releases the date at 20:15 ET. Collect at after-hours close + 30m.
-    - cron: '30 20 * * 1-5'
-      timezone: 'America/New_York'
-    # Recover an unpublished session after midnight. Published dates exit before market data calls.
-    - cron: '30 0 * * 2-6'
-      timezone: 'America/New_York'
+    - cron: '0 2 * * 2-6'
 permissions:
   contents: read
 concurrency:
