@@ -1,0 +1,18 @@
+name: Verify score widths
+on:
+  push:
+    branches: [verify-score-widths]
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --no-save playwright && npx playwright install --with-deps chromium
+      - run: |
+          python3 -m http.server 8149 --bind 127.0.0.1 >/tmp/width.log 2>&1 &
+          node .github/verify-score-widths.cjs
