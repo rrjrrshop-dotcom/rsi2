@@ -1,0 +1,29 @@
+name: Korean top five daily scores
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 2 * * 2-6'
+    - cron: '30 7 * * 2-6'
+permissions:
+  contents: read
+concurrency:
+  group: korea-five
+  cancel-in-progress: false
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      UPSTASH_REDIS_REST_URL: ${{ secrets.UPSTASH_REDIS_REST_URL }}
+      UPSTASH_REDIS_REST_TOKEN: ${{ secrets.UPSTASH_REDIS_REST_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: pip install finance-datareader
+      - run: python scripts/korea-five.py
+      - run: node scripts/korea-five.mjs
