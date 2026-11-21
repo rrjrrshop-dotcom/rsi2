@@ -1,9 +1,8 @@
 name: Korean top five daily scores
 on:
+  push:
+    branches: [verify-korea-five]
   workflow_dispatch:
-  schedule:
-    - cron: '0 2 * * 2-6'
-    - cron: '30 7 * * 2-6'
 permissions:
   contents: read
 concurrency:
