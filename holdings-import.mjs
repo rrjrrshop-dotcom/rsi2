@@ -56,7 +56,7 @@ export function readHoldingsImage(tsv, width) {
     const estimate = Math.round(total/price);
     if (estimate>0 && Math.abs(total-estimate*price) <= estimate*.005+.01) qty=estimate;
    }
-   return [{symbol,qty,price,buyDate:row.words.map(w=>purchaseDate(w.text)).find(Boolean)||'',source:'매입가 열'}];
+   return [{symbol,qty,price,...(row.words.some(w=>purchaseDate(w.text))&&{buyDate:row.words.map(w=>purchaseDate(w.text)).find(Boolean)}),source:'매입가 열'}];
   });
  }
  const marketRows = lines.filter(row => row.words.some(w => w.x>.57 && /USD$/i.test(w.text) && number(w.text)>0));
