@@ -1,7 +1,12 @@
 import {renderScoreCard,renderScoreGraphic} from './score-card.mjs';
 import {guidanceElement} from './strategy-guidance.mjs';
 const ids=['1000','trend','box','rsi2','breakout'];
-let saved,loadedAt=0;
+let saved,loadedAt=0, pending;
+async function readSaved(code){
+ if(saved&&Date.now()-loadedAt<60000)return saved;
+ if(!pending)pending=window.authorizedFetch('/api/korea-five',{},code).then(async response=>{const data=await response.json();if(!response.ok)throw Error(data.error||'국내 저장본을 읽지 못했습니다.');saved=data;loadedAt=Date.now();return data}).finally(()=>{pending=null});
+ return pending;
+}
 const panels=[];
 function make(id,parent){
  const section=document.createElement('details');section.className='panel extra';
@@ -14,10 +19,7 @@ function make(id,parent){
  try{
  const code=window.storedCode()||document.getElementById('pairCode').value.trim();
  if(!code)throw Error('개인 등록 코드를 먼저 입력하세요.');
- if(!saved||Date.now()-loadedAt>60000){
-  const response=await window.authorizedFetch('/api/korea-five',{},code);const data=await response.json();
-  if(!response.ok)throw Error(data.error);saved=data;loadedAt=Date.now();
- }
+ await readSaved(code);
  list.replaceChildren();status.textContent=saved.through+' 한국 확정 일봉 · 시총 순위 확인 '+saved.rankedAt;
  for(const [index,row] of saved.rows.entries()){
  const details=document.createElement('details'),heading=document.createElement('summary');
@@ -29,7 +31,8 @@ function make(id,parent){
  }catch(error){status.textContent=error.message}
  };
  load.onclick=render;section.addEventListener('toggle',()=>{if(section.open)render()});
- panels.push(section);
+ panels.push({section,render});
+ document.getElementById('tab-'+id)?.addEventListener('click',()=>{section.open=true;render()});
 }
 for(const id of ids)make(id,document.getElementById('strategy-'+id));
 const help=document.getElementById('strategy-help'),group=document.createElement('section');group.className='panel';
