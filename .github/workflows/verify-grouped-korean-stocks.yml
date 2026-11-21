@@ -1,0 +1,20 @@
+name: Verify grouped Korean stocks
+on:
+  push:
+    branches: [verify-grouped-korean-stocks]
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm test
+      - run: npm install --no-save playwright && npx playwright install --with-deps chromium
+      - run: |
+          python3 -m http.server 8149 --bind 127.0.0.1 >/tmp/korea-web.log 2>&1 &
+          node .github/verify-grouped-korean-stocks.cjs
