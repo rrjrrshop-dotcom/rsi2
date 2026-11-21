@@ -4,11 +4,9 @@ import {readFile} from 'node:fs/promises';
 import {collectionTarget, tradingWeekdays} from './trading-calendar.mjs';
 import {readSession} from '../scripts/scan.mjs';
 
-test('schedule collects US weekdays at 20:30 Eastern including summer time', async () => {
+test('schedule collects at 11am Korea Tuesday to Saturday', async () => {
   const yml = await readFile(new URL('../.github/workflows/daily.yml', import.meta.url), 'utf8');
-  assert.match(yml, /30 20 \* \* 1-5/);
-  assert.match(yml, /30 0 \* \* 2-6/);
-  assert.match(yml, /timezone: 'America\/New_York'/);
+  assert.match(yml, /0 2 \* \* 2-6/);
   assert.equal(collectionTarget(new Date('2026-11-17T01:29:00Z')), '2026-11-13');
   assert.equal(collectionTarget(new Date('2026-11-17T01:30:00Z')), '2026-11-16');
   assert.equal(collectionTarget(new Date('2026-11-17T05:30:00Z')), '2026-11-16');
