@@ -1,0 +1,14 @@
+import vm from 'node:vm';import {readFile} from 'node:fs/promises';import assert from 'node:assert/strict';
+const src=await readFile('app-update.mjs','utf8'),saved=new Map([['stocking-deployment-version','old']]),field={type:'text',value:'editing',defaultValue:''};
+let reload=0,tick;
+const context={document:{visibilityState:'visible',querySelectorAll:()=>[field],querySelector:()=>null,addEventListener(){}},window:{addEventListener(){}},sessionStorage:{getItem:k=>saved.get(k),setItem:(k,v)=>saved.set(k,v)},location:{reload:()=>reload++},fetch:async()=>({ok:true,json:async()=>({version:'new'})}),setInterval:fn=>tick=fn,setTimeout:fn=>fn(),Date};
+vm.runInNewContext(src,context);
+await new Promise(r=>setImmediate(r));
+assert.equal(reload,1);assert.equal(saved.get('stocking-deployment-version'),'new');
+reload=0;saved.set('stocking-deployment-version','older');
+vm.runInNewContext(src,{...context,setInterval:fn=>tick=fn});
+field.value='unfinished';
+await new Promise(r=>setImmediate(r));
+assert.equal(reload,0);
+field.value='editing';tick();assert.equal(reload,1);
+console.log('Verified deployment reload and postponement while editing.');
