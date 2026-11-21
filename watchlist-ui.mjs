@@ -1,3 +1,4 @@
+import {guidanceElement} from './strategy-guidance.mjs';
 import {compareScores, scoreName, scoreStrategy} from './scores.mjs';
 import {renderScoreCard, renderScoreGraphic} from './score-card.mjs';
 import {hasCurrentRecommendationScreen, RECOMMENDATION_INDEXES, RECOMMENDATION_LIMIT, RECOMMENDATION_SCOPES} from './recommendation-policy.mjs';
@@ -53,6 +54,7 @@ function renderRows(id, rows, container, removable = false, waveCodeField) {
    open.onclick = () => openDetail(id, item.symbol, removable ? undefined : item);
   }
   wrap.append(open);
+  wrap.append(guidanceElement(id,item,removable?'watch':'recommend'));
   if (removable) {
    const remove = el('button','삭제');
    remove.type = 'button';

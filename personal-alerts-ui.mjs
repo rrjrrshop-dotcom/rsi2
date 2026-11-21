@@ -1,3 +1,4 @@
+import {guidanceElement} from './strategy-guidance.mjs';
 import {renderScoreGraphic} from './score-card.mjs';
 const ids=['1000','trend','box','rsi2','breakout'];
 const names={'1000':'1000',trend:'trend',box:'box',rsi2:'RSI2',breakout:'breakout'};
@@ -56,6 +57,7 @@ function paint(){
   const symbol=cell.dataset.symbol??cell.textContent;
   cell.dataset.symbol=symbol;
   cell.querySelector('.holding-scores')?.remove();
+  cell.querySelector('.holding-guidance')?.remove();
   const item=scoreRows.get(symbol);
   const strip=document.createElement('span');
   strip.className='holding-scores';
@@ -69,6 +71,9 @@ function paint(){
    strip.append(chip);
   }
   cell.append(strip);
+  const guidance=document.createElement('div');guidance.className='holding-guidance';
+  for(const id of ids)if(item?.scores[id])guidance.append(guidanceElement(id,item.scores[id],'holding'));
+  cell.append(guidance);
   if(!item?.date)continue;
   const position=holdings().find(row=>row.symbol===symbol);
   if(!position)continue;
